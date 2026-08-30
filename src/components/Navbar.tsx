@@ -23,7 +23,8 @@ import {
   Download,
   FileSpreadsheet,
   Workflow,
-  CalendarDays
+  CalendarDays,
+  ClipboardCheck
 } from "lucide-react";
 import { AppNavView } from "../types";
 import { TnbLogo } from "./TnbLogo";
@@ -37,9 +38,12 @@ interface NavbarProps {
   vehicleCount?: number;
   inventoryCount?: number;
   pmCount?: number;
+  dailyInspectionCount?: number;
   onClearAllData: () => void;
   onLoadDemoData: () => void;
   onOpenNewModal: () => void;
+  onOpenBackdatedTicketModal?: () => void;
+  onOpenImportTicketsModal?: () => void;
   onOpenSearchModal: () => void;
   onOpenExportBackupModal?: () => void;
 }
@@ -53,9 +57,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   vehicleCount = 0,
   inventoryCount = 0,
   pmCount = 0,
+  dailyInspectionCount = 0,
   onClearAllData,
   onLoadDemoData,
   onOpenNewModal,
+  onOpenBackdatedTicketModal,
+  onOpenImportTicketsModal,
   onOpenSearchModal,
   onOpenExportBackupModal
 }) => {
@@ -97,6 +104,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: Truck,
       badge: vehicleCount > 0 ? `${vehicleCount}` : null,
       badgeColor: "bg-blue-400 text-slate-950 font-semibold"
+    },
+    {
+      id: "daily_inspection" as AppNavView,
+      label: "ตรวจสภาพรถประจำวัน",
+      shortLabel: "ตรวจรถประจำวัน",
+      icon: ClipboardCheck,
+      badge: "21 ข้อ",
+      badgeColor: "bg-cyan-400 text-slate-950 font-bold"
     },
     {
       id: "pm_plan" as AppNavView,
@@ -236,6 +251,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
 
                   <div className="p-1 space-y-1">
+                    {onOpenBackdatedTicketModal && (
+                      <button
+                        onClick={() => {
+                          setIsDataMenuOpen(false);
+                          onOpenBackdatedTicketModal();
+                        }}
+                        id="btn-open-backdated-ticket-menu"
+                        className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:text-white hover:bg-amber-600/30 rounded-lg flex items-center space-x-2.5 transition-colors font-medium border border-amber-500/20 bg-amber-950/20"
+                      >
+                        <CalendarDays className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div>
+                          <div className="font-bold text-amber-300">เพิ่มใบแจ้งซ่อมย้อนหลัง (Backdate Work Order)</div>
+                          <div className="text-[10px] text-amber-100/70">กรอกประวัติงานซ่อมในอดีต / บันทึกงานซ่อมจากอู่นอก</div>
+                        </div>
+                      </button>
+                    )}
+
+                    {onOpenImportTicketsModal && (
+                      <button
+                        onClick={() => {
+                          setIsDataMenuOpen(false);
+                          onOpenImportTicketsModal();
+                        }}
+                        id="btn-open-import-tickets-menu"
+                        className="w-full text-left px-3 py-2 text-xs text-blue-300 hover:text-white hover:bg-blue-600/30 rounded-lg flex items-center space-x-2.5 transition-colors font-medium border border-blue-500/20 bg-blue-950/20"
+                      >
+                        <Download className="w-4 h-4 text-blue-400 shrink-0" />
+                        <div>
+                          <div className="font-bold text-blue-300">นำเข้า Excel ประวัติงานซ่อม (Bulk Tickets)</div>
+                          <div className="text-[10px] text-blue-100/70">อัปโหลดไฟล์ Excel/CSV บันทึกประวัติซ่อมหลายคันพร้อมกัน</div>
+                        </div>
+                      </button>
+                    )}
+
                     {onOpenExportBackupModal && (
                       <button
                         onClick={() => {
@@ -308,8 +357,177 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
+        {/* Mobile Slide-Out Navigation Drawer */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden flex">
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs transition-opacity"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+
+            {/* Drawer Content */}
+            <div className="relative ml-auto w-full max-w-xs sm:max-w-sm bg-slate-900 h-full shadow-2xl border-l border-slate-800 flex flex-col z-10 overflow-y-auto animate-in slide-in-from-right duration-200">
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+                <div className="flex items-center space-x-2.5">
+                  <div className="bg-white px-2 py-1 rounded-lg">
+                    <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-white">TNB Logistics</h3>
+                    <p className="text-[10px] text-slate-400">ระบบซ่อมบำรุง & ตรวจสภาพรถ</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Quick Actions at Top of Drawer */}
+              <div className="p-3 border-b border-slate-800/80 bg-slate-900/50 space-y-2">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenNewModal();
+                  }}
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center space-x-2 shadow-md shadow-blue-900/40 active:scale-98 transition-all"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>+ เปิดใบแจ้งซ่อมใหม่ (New Ticket)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenSearchModal();
+                  }}
+                  className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl flex items-center justify-center space-x-2 border border-slate-700 transition-colors"
+                >
+                  <Search className="w-3.5 h-3.5 text-blue-400" />
+                  <span>ค้นหาด่วนด้วยทะเบียนรถ</span>
+                </button>
+              </div>
+
+              {/* Module Navigation List */}
+              <div className="flex-1 p-3 space-y-1.5 overflow-y-auto">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                  เมนูโมดูลหลัก (Core Modules)
+                </div>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        onSelectView(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-900/50"
+                          : "text-slate-300 hover:bg-slate-800/90 bg-slate-800/40"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-1.5 rounded-lg ${isActive ? "bg-white/20 text-white" : "bg-slate-700 text-slate-300"}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <span className="text-left">{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${item.badgeColor}`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Additional Actions */}
+                <div className="pt-3">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                    ระบบจัดการข้อมูล & นำเข้า
+                  </div>
+                  <div className="space-y-1 mt-1">
+                    {onOpenBackdatedTicketModal && (
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          onOpenBackdatedTicketModal();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-amber-950/40 bg-amber-950/20 rounded-lg flex items-center space-x-2 border border-amber-500/20"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>เพิ่มใบแจ้งซ่อมย้อนหลัง</span>
+                      </button>
+                    )}
+
+                    {onOpenImportTicketsModal && (
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          onOpenImportTicketsModal();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-blue-300 hover:bg-blue-950/40 bg-blue-950/20 rounded-lg flex items-center space-x-2 border border-blue-500/20"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>นำเข้า Excel ประวัติซ่อม</span>
+                      </button>
+                    )}
+
+                    {onOpenExportBackupModal && (
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          onOpenExportBackupModal();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-emerald-300 hover:bg-emerald-950/40 bg-emerald-950/20 rounded-lg flex items-center space-x-2 border border-emerald-500/20"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>สำรองข้อมูล / ส่งออก Excel</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onLoadDemoData();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 bg-slate-800/40 rounded-lg flex items-center space-x-2"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span>โหลดข้อมูลตัวอย่าง (Demo)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onClearAllData();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-rose-300 hover:bg-rose-950/40 bg-rose-950/20 rounded-lg flex items-center space-x-2 border border-rose-500/20"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>ล้างข้อมูลทั้งระบบ (Clear)</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Footer Status */}
+              <div className="p-3 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                <span>ยานพาหนะ {vehicleCount} คัน</span>
+                <span className="text-emerald-400 font-medium">● ระบบออนไลน์ 100%</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Secondary Sub-Navbar for Tablets and Mobile */}
-        <div className="lg:hidden flex items-center overflow-x-auto py-2 border-t border-slate-800 space-x-1 no-scrollbar">
+        <div className="lg:hidden flex items-center overflow-x-auto py-2 border-t border-slate-800 space-x-1 no-scrollbar px-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -320,10 +538,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onSelectView(item.id);
                   setIsMobileMenuOpen(false);
                 }}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                   isActive
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-300 hover:text-white bg-slate-800/80"
+                    : "text-slate-300 hover:text-white bg-slate-800/80 active:bg-slate-700"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -338,6 +556,68 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </div>
       </div>
+
+      {/* Floating Sticky Mobile Bottom Navigation Bar (Phone Screens) */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-2 py-1 shadow-2xl flex items-center justify-around">
+        {/* 1. แจ้งซ่อม (Requester) */}
+        <button
+          onClick={() => onSelectView("requester")}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${
+            currentView === "requester" ? "text-blue-400" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Car className="w-5 h-5 mb-0.5" />
+          <span>แจ้งซ่อม</span>
+        </button>
+
+        {/* 2. งานช่าง (Worker) */}
+        <button
+          onClick={() => onSelectView("worker")}
+          className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${
+            currentView === "worker" ? "text-blue-400" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <HardHat className="w-5 h-5 mb-0.5" />
+          <span>งานช่าง</span>
+          {(pendingCount + inProgressCount) > 0 && (
+            <span className="absolute top-0 right-1 w-4 h-4 bg-amber-500 text-slate-950 text-[9px] font-extrabold rounded-full flex items-center justify-center">
+              {pendingCount + inProgressCount}
+            </span>
+          )}
+        </button>
+
+        {/* 3. ตรวจ 21 ข้อ (Daily Inspection) */}
+        <button
+          onClick={() => onSelectView("daily_inspection")}
+          className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${
+            currentView === "daily_inspection" ? "text-cyan-400 font-black" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <ClipboardCheck className="w-5 h-5 mb-0.5" />
+          <span>ตรวจ 21 ข้อ</span>
+          <span className="absolute top-0 right-0 w-2 h-2 bg-cyan-400 rounded-full animate-ping"></span>
+        </button>
+
+        {/* 4. แผน PM (PM Plan) */}
+        <button
+          onClick={() => onSelectView("pm_plan")}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${
+            currentView === "pm_plan" ? "text-blue-400" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <CalendarDays className="w-5 h-5 mb-0.5" />
+          <span>แผน PM</span>
+        </button>
+
+        {/* 5. เมนูทั้งหมด (Menu Drawer) */}
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-bold text-slate-400 hover:text-slate-200"
+        >
+          <Menu className="w-5 h-5 mb-0.5 text-blue-400" />
+          <span>เมนู</span>
+        </button>
+      </nav>
     </header>
   );
 };

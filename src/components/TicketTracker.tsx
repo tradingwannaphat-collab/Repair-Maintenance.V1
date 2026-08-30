@@ -30,6 +30,8 @@ interface TicketTrackerProps {
   tickets: RepairTicket[];
   onSelectTicket: (ticket: RepairTicket) => void;
   onOpenNewModal: () => void;
+  onOpenBackdatedModal?: () => void;
+  onOpenImportTicketsModal?: () => void;
   onQuickStatusChange: (ticketId: string, newStatus: RepairStatus) => void;
 }
 
@@ -47,6 +49,8 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
   tickets,
   onSelectTicket,
   onOpenNewModal,
+  onOpenBackdatedModal,
+  onOpenImportTicketsModal,
   onQuickStatusChange
 }) => {
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
@@ -287,8 +291,36 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
               </button>
             </div>
 
+            {/* Action Buttons: Import, Backdated, and New Ticket */}
+            {onOpenImportTicketsModal && (
+              <button
+                type="button"
+                onClick={onOpenImportTicketsModal}
+                id="btn-quick-import-tickets"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs font-semibold border border-slate-300 transition-all flex items-center space-x-1.5"
+                title="นำเข้าไฟล์ Excel ประวัติงานซ่อมย้อนหลัง"
+              >
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden sm:inline">นำเข้า Excel</span>
+              </button>
+            )}
+
+            {onOpenBackdatedModal && (
+              <button
+                type="button"
+                onClick={onOpenBackdatedModal}
+                id="btn-quick-backdated-ticket"
+                className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shadow-xs"
+                title="ลงข้อมูลใบแจ้งซ่อมย้อนหลัง"
+              >
+                <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                <span>+ ลงย้อนหลัง</span>
+              </button>
+            )}
+
             {/* Quick Add Button */}
             <button
+              type="button"
               onClick={onOpenNewModal}
               id="btn-quick-new-ticket"
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-all flex items-center space-x-1.5"

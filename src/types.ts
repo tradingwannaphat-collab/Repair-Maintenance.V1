@@ -408,5 +408,109 @@ export interface PMAnnualMasterPlan {
   generatedAt: string;
 }
 
-export type AppNavView = 'requester' | 'worker' | 'vehicles' | 'pm_plan' | 'part_list' | 'receiving' | 'requisition' | 'workflow';
+// ==========================================
+// DAILY VEHICLE INSPECTION (ตรวจสภาพรถประจำวัน)
+// ==========================================
+
+export type InspectionCheckStatus = 'pass' | 'fail' | 'skip' | 'untested'; // '/' = pass, 'x' = fail, 'O' = skip
+
+export type InspectionCategory = 
+  | 'engine'       // เครื่องยนต์ & ของเหลว (Engine & Fluids)
+  | 'brake'        // ระบบเบรก & ลมเบรก (Brake & Air Tank)
+  | 'visibility'   // ทัศนวิสัย & กระจก (Visibility & Glass)
+  | 'tires'        // ยาง & ล้อ & น็อต (Tires & Wheels)
+  | 'electrical'   // ระบบไฟส่องสว่าง & สัญญาณ & แตร (Lights & Electrical)
+  | 'safety'       // อุปกรณ์ความปลอดภัย & ฉุกเฉิน (Safety Equipment)
+  | 'bodywork';    // ตัวถัง พื้นกระบะ & โครงสร้าง (Body & Structure)
+
+export interface DailyInspectionItemTemplate {
+  no: number;
+  name: string;
+  standard: string;
+  method: string;
+  frequency: string;
+  category: InspectionCategory;
+  diagramZone?: 'front' | 'rear' | 'engine' | 'wheel' | 'cabin' | 'cargo' | 'underbody';
+  descriptionGuide: string;
+}
+
+export interface DailyInspectionCheckResult {
+  itemId: number;
+  no: number;
+  name: string;
+  standard: string;
+  method: string;
+  frequency: string;
+  category: InspectionCategory;
+  status: InspectionCheckStatus; // 'pass' (/), 'fail' (x), 'skip' (O)
+  remark?: string;
+  hasIssue?: boolean;
+  issueDescription?: string;
+  issueUrgency?: Priority;
+  images?: string[];
+}
+
+export interface DailyVehicleInspectionRecord {
+  id: string;
+  docNumber: string; // e.g. "DCI-2026-0830-001"
+  isoDocNumber?: string; // e.g. "TNB-SHE-FRM-007-Rev.03"
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm (e.g. "07:30")
+  vehicleId: string;
+  licensePlate: string;
+  erpNo?: string;
+  province: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleType: VehicleType;
+  department: string;
+  driverName: string;
+  driverPhone?: string;
+  inspectorName: string;
+  inspectorPhone?: string;
+  currentMileage: number;
+  startMileage?: number;
+  overallStatus: 'pass' | 'fail' | 'skip'; // pass: all ok, fail: has defect, skip: holiday/parked
+  defectCount: number;
+  results: DailyInspectionCheckResult[];
+  notes?: string;
+  ticketCreated?: boolean;
+  ticketId?: string;
+  ticketNumber?: string;
+  locationName?: string;
+  signatureDriver?: string;
+  signatureInspector?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyInspectionMatrixVehicle {
+  vehicle: VehicleRecord;
+  month: number; // 1-12
+  year: number; // e.g. 2026
+  days: {
+    [day: number]: {
+      status: InspectionCheckStatus;
+      recordId?: string;
+      mileage?: number;
+      defectCount?: number;
+      itemStatuses?: { [itemNo: number]: InspectionCheckStatus };
+      inspectorName?: string;
+    };
+  };
+  totalInspectedDays: number;
+  totalDefectDays: number;
+  totalSkipDays: number;
+}
+
+export type AppNavView = 
+  | 'requester' 
+  | 'worker' 
+  | 'vehicles' 
+  | 'daily_inspection' 
+  | 'pm_plan' 
+  | 'part_list' 
+  | 'receiving' 
+  | 'requisition' 
+  | 'workflow';
 

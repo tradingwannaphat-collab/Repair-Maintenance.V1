@@ -3,6 +3,7 @@ import {
   VehicleRecord, 
   InventoryItem, 
   RepairTicket, 
+  RepairItemPart,
   GoodsReceiptRecord, 
   GoodsRequisitionRecord, 
   PMMonthlyScheduleItem,
@@ -844,6 +845,402 @@ export function exportTicketsToCSV(tickets: RepairTicket[], filename = "TNB_Repa
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const csv = XLSX.utils.sheet_to_csv(worksheet);
   downloadCSV(csv, `${filename}_${new Date().toISOString().split("T")[0]}`);
+}
+
+export const TICKET_EXCEL_HEADERS = [
+  "เลขที่ใบแจ้งซ่อม (Ticket No.)",
+  "ทะเบียนรถ (License Plate)",
+  "วันที่แจ้งซ่อม (Request Date YYYY-MM-DD)",
+  "อาการเสีย / งานซ่อม (Symptoms)",
+  "หมวดหมู่งานซ่อม (Category)",
+  "งานย่อย (Sub-Category)",
+  "ความเร่งด่วน (Priority: critical/high/medium/low)",
+  "สถานะงาน (Status: completed/in_progress/pending/etc.)",
+  "ผู้แจ้งซ่อม (Requester Name)",
+  "สังกัด / แผนก (Department)",
+  "ช่างผู้รับผิดชอบ (Mechanic)",
+  "เลขไมล์ (กม.) (Mileage)",
+  "รายการอะไหล่ที่เปลี่ยน (Parts List)",
+  "ค่าอะไหล่ (บาท) (Parts Cost)",
+  "ค่าแรง (บาท) (Labor Cost)",
+  "รวมค่าใช้จ่าย (บาท) (Total Cost)",
+  "วันที่ซ่อมเสร็จจริง (Completion Date YYYY-MM-DD)",
+  "คะแนนประเมิน (Rating 1-5)",
+  "หมายเหตุงานซ่อม (Notes)"
+];
+
+export function downloadTicketTemplate(format: "xlsx" | "csv" = "xlsx") {
+  const sampleTickets = [
+    {
+      "เลขที่ใบแจ้งซ่อม (Ticket No.)": "REP-2025-1042",
+      "ทะเบียนรถ (License Plate)": "70-1122",
+      "วันที่แจ้งซ่อม (Request Date YYYY-MM-DD)": "2025-11-15",
+      "อาการเสีย / งานซ่อม (Symptoms)": "ระบบเบรกดัง มีลมรั่วที่หม้อลมเบรกหลัง เปลี่ยนผ้าเบรกและซีลยาง",
+      "หมวดหมู่งานซ่อม (Category)": "ระบบช่วงล่าง & เบรก",
+      "งานย่อย (Sub-Category)": "ระบบเบรก & จานเบรก & ผ้าเบรก",
+      "ความเร่งด่วน (Priority: critical/high/medium/low)": "high",
+      "สถานะงาน (Status: completed/in_progress/pending/etc.)": "completed",
+      "ผู้แจ้งซ่อม (Requester Name)": "นายสมชาย สายมั่น",
+      "สังกัด / แผนก (Department)": "ฝ่ายขนส่ง",
+      "ช่างผู้รับผิดชอบ (Mechanic)": "ช่างวิชาญ",
+      "เลขไมล์ (กม.) (Mileage)": 78500,
+      "รายการอะไหล่ที่เปลี่ยน (Parts List)": "ชุดผ้าเบรกหลัง 10 ล้อ (2 ชุด), ซีลหม้อลมเบรก (1 ชุด)",
+      "ค่าอะไหล่ (บาท) (Parts Cost)": 3800,
+      "ค่าแรง (บาท) (Labor Cost)": 800,
+      "รวมค่าใช้จ่าย (บาท) (Total Cost)": 4600,
+      "วันที่ซ่อมเสร็จจริง (Completion Date YYYY-MM-DD)": "2025-11-16",
+      "คะแนนประเมิน (Rating 1-5)": 5,
+      "หมายเหตุงานซ่อม (Notes)": "ทดสอบแรงดันลมเบรกปกติ ส่งมอบรถเข้าวิ่งงานเรียบร้อย"
+    },
+    {
+      "เลขที่ใบแจ้งซ่อม (Ticket No.)": "REP-2025-1185",
+      "ทะเบียนรถ (License Plate)": "70-3344",
+      "วันที่แจ้งซ่อม (Request Date YYYY-MM-DD)": "2025-12-08",
+      "อาการเสีย / งานซ่อม (Symptoms)": "ถ่ายน้ำมันเครื่อง ไส้กรองเครื่อง ไส้กรองดีเซล ตามรอบระยะทาง 60,000 กม.",
+      "หมวดหมู่งานซ่อม (Category)": "ระบบหล่อลื่น & ของเหลว",
+      "งานย่อย (Sub-Category)": "เปลี่ยนถ่ายน้ำมันเครื่อง & ไส้กรอง",
+      "ความเร่งด่วน (Priority: critical/high/medium/low)": "medium",
+      "สถานะงาน (Status: completed/in_progress/pending/etc.)": "completed",
+      "ผู้แจ้งซ่อม (Requester Name)": "นายอนันต์ ชัยวัฒน์",
+      "สังกัด / แผนก (Department)": "ฝ่ายขนส่ง",
+      "ช่างผู้รับผิดชอบ (Mechanic)": "ช่างอนันต์",
+      "เลขไมล์ (กม.) (Mileage)": 62400,
+      "รายการอะไหล่ที่เปลี่ยน (Parts List)": "น้ำมันเครื่องสังเคราะห์ 15W-40 (28 ลิตร), กรองน้ำมันเครื่องแท้ (1 ลูก)",
+      "ค่าอะไหล่ (บาท) (Parts Cost)": 4500,
+      "ค่าแรง (บาท) (Labor Cost)": 500,
+      "รวมค่าใช้จ่าย (บาท) (Total Cost)": 5000,
+      "วันที่ซ่อมเสร็จจริง (Completion Date YYYY-MM-DD)": "2025-12-08",
+      "คะแนนประเมิน (Rating 1-5)": 5,
+      "หมายเหตุงานซ่อม (Notes)": "เช็คสภาพเครื่องยนต์ทั่วไปพร้อมใช้งาน"
+    },
+    {
+      "เลขที่ใบแจ้งซ่อม (Ticket No.)": "REP-2026-0105",
+      "ทะเบียนรถ (License Plate)": "70-5566",
+      "วันที่แจ้งซ่อม (Request Date YYYY-MM-DD)": "2026-01-20",
+      "อาการเสีย / งานซ่อม (Symptoms)": "ไดชาร์จไม่จ่ายไฟ แบตเตอรี่หมดกลางทาง นำรถกลับมาเปลี่ยนไดชาร์จและแบตเตอรี่",
+      "หมวดหมู่งานซ่อม (Category)": "ระบบแสงสว่าง & ไฟฟ้า",
+      "งานย่อย (Sub-Category)": "ไดชาร์จ & ไดสตาร์ท",
+      "ความเร่งด่วน (Priority: critical/high/medium/low)": "critical",
+      "สถานะงาน (Status: completed/in_progress/pending/etc.)": "completed",
+      "ผู้แจ้งซ่อม (Requester Name)": "นายประเสริฐ เก่งการค้า",
+      "สังกัด / แผนก (Department)": "ฝ่ายขนส่ง",
+      "ช่างผู้รับผิดชอบ (Mechanic)": "ช่างธีระพงษ์",
+      "เลขไมล์ (กม.) (Mileage)": 115000,
+      "รายการอะไหล่ที่เปลี่ยน (Parts List)": "ไดชาร์จ 24V 80A โอเวอร์ฮอลล์ (1 ลูก), แบตเตอรี่ 12V 150Ah (2 ลูก)",
+      "ค่าอะไหล่ (บาท) (Parts Cost)": 11200,
+      "ค่าแรง (บาท) (Labor Cost)": 900,
+      "รวมค่าใช้จ่าย (บาท) (Total Cost)": 12100,
+      "วันที่ซ่อมเสร็จจริง (Completion Date YYYY-MM-DD)": "2026-01-21",
+      "คะแนนประเมิน (Rating 1-5)": 4,
+      "หมายเหตุงานซ่อม (Notes)": "ไดชาร์จเดิมถอดส่งซ่อมเป็นอะไหล่สำรอง (Rebuilt)"
+    }
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(sampleTickets);
+  worksheet["!cols"] = [
+    { wch: 22 }, // Ticket No
+    { wch: 16 }, // Plate
+    { wch: 22 }, // Date
+    { wch: 45 }, // Symptoms
+    { wch: 24 }, // Category
+    { wch: 26 }, // Sub-Category
+    { wch: 18 }, // Priority
+    { wch: 18 }, // Status
+    { wch: 20 }, // Requester
+    { wch: 16 }, // Dept
+    { wch: 18 }, // Mechanic
+    { wch: 14 }, // Mileage
+    { wch: 40 }, // Parts list
+    { wch: 14 }, // Parts cost
+    { wch: 14 }, // Labor cost
+    { wch: 16 }, // Total cost
+    { wch: 22 }, // Completion date
+    { wch: 16 }, // Rating
+    { wch: 35 }  // Notes
+  ];
+
+  if (format === "csv") {
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    downloadCSV(csv, "TNB_Historical_Repair_Tickets_Template.csv");
+  } else {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "ใบแจ้งซ่อมย้อนหลัง");
+    downloadWorkbook(workbook, "TNB_Historical_Repair_Tickets_Template.xlsx");
+  }
+}
+
+export interface TicketImportResult {
+  success: boolean;
+  data: RepairTicket[];
+  errors: string[];
+  rawCount: number;
+  summary: {
+    totalTickets: number;
+    completedTickets: number;
+    totalCost: number;
+    vehiclesMatched: number;
+  };
+}
+
+export async function parseTicketsFile(
+  file: File,
+  existingVehicles: VehicleRecord[] = []
+): Promise<TicketImportResult> {
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const jsonRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+    if (!jsonRows || jsonRows.length === 0) {
+      return {
+        success: false,
+        data: [],
+        errors: ["ไฟล์ไม่มีข้อมูล หรือตารางว่างเปล่า"],
+        rawCount: 0,
+        summary: { totalTickets: 0, completedTickets: 0, totalCost: 0, vehiclesMatched: 0 }
+      };
+    }
+
+    const parsedTickets: RepairTicket[] = [];
+    const errors: string[] = [];
+    const matchedVehicleSet = new Set<string>();
+
+    const parseNum = (v: any, fallback = 0): number => {
+      if (typeof v === "number") return v;
+      if (!v) return fallback;
+      const cleaned = String(v).replace(/[^0-9.-]/g, "");
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? fallback : num;
+    };
+
+    const parseDateStr = (val: any): string => {
+      if (!val) return new Date().toISOString();
+      if (val instanceof Date) return val.toISOString();
+      
+      // Excel serial date number
+      if (typeof val === "number") {
+        const date = new Date((val - (25567 + 2)) * 86400 * 1000);
+        return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+      }
+
+      const str = String(val).trim();
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+
+      // Format DD/MM/YYYY or DD-MM-YYYY
+      const parts = str.split(/[-/]/);
+      if (parts.length === 3) {
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1;
+        let year = parseInt(parts[2], 10);
+        if (year > 2500) year -= 543; // Buddhist era
+        const customDate = new Date(year, month, day, 9, 0, 0);
+        if (!isNaN(customDate.getTime())) return customDate.toISOString();
+      }
+
+      return new Date().toISOString();
+    };
+
+    const parsePriority = (val: any): Priority => {
+      const str = String(val).toLowerCase().trim();
+      if (str.includes("วิกฤต") || str.includes("critical") || str.includes("ฉุกเฉิน") || str.includes("urgent")) return "critical";
+      if (str.includes("มาก") || str.includes("high") || str.includes("ด่วน")) return "high";
+      if (str.includes("ต่ำ") || str.includes("low") || str.includes("น้อย")) return "low";
+      return "medium";
+    };
+
+    const parseStatus = (val: any): RepairStatus => {
+      const str = String(val).toLowerCase().trim();
+      if (str.includes("เสร็จ") || str.includes("completed") || str.includes("เรียบร้อย") || str.includes("ส่งมอบ") || str.includes("done")) return "completed";
+      if (str.includes("กำลัง") || str.includes("in_progress") || str.includes("ซ่อม") || str.includes("progress")) return "in_progress";
+      if (str.includes("อะไหล่") || str.includes("waiting_parts") || str.includes("รอของ")) return "waiting_parts";
+      if (str.includes("ตรวจ") || str.includes("inspecting") || str.includes("เช็ค")) return "inspecting";
+      if (str.includes("qc") || str.includes("testing") || str.includes("ทดสอบ")) return "testing";
+      if (str.includes("ยกเลิก") || str.includes("cancel")) return "cancelled";
+      return "completed"; // Default backdated ticket to completed
+    };
+
+    jsonRows.forEach((row, idx) => {
+      const rowNum = idx + 2;
+      const fieldMap: Record<string, any> = {};
+      Object.keys(row).forEach((k) => {
+        fieldMap[cleanKey(k)] = row[k];
+      });
+
+      const getVal = (...keys: string[]): any => {
+        for (const k of keys) {
+          const cleaned = cleanKey(k);
+          if (fieldMap[cleaned] !== undefined && fieldMap[cleaned] !== "") {
+            return fieldMap[cleaned];
+          }
+        }
+        return "";
+      };
+
+      const licensePlateRaw = String(getVal("ทะเบียนรถ", "ทะเบียน", "licenseplate", "plate", "ทะเบียนใหม่")).trim();
+      const symptoms = String(getVal("อาการเสียงานซ่อม", "อาการเสีย", "งานซ่อม", "symptoms", "รายละเอียดงาน", "อาการ")).trim();
+
+      if (!licensePlateRaw && !symptoms) {
+        // Skip completely empty row
+        return;
+      }
+
+      const cleanPlate = normalizeLicensePlate(licensePlateRaw);
+      if (!cleanPlate) {
+        errors.push(`แถวที่ ${rowNum}: ไม่พบทะเบียนรถ`);
+        return;
+      }
+
+      // Match with vehicle registry
+      const matchedVeh = existingVehicles.find(v => normalizeLicensePlate(v.licensePlate) === cleanPlate);
+      if (matchedVeh) {
+        matchedVehicleSet.add(matchedVeh.id);
+      }
+
+      const vehicleBrand = matchedVeh?.vehicleBrand || String(getVal("ยี่ห้อ", "brand") || "ISUZU");
+      const vehicleModel = matchedVeh?.vehicleModel || String(getVal("รุ่น", "แบบรุ่น", "model") || "");
+      const vehicleType: VehicleType = matchedVeh?.vehicleType || "tractor_10w";
+      const province = matchedVeh?.province || String(getVal("จังหวัด", "province") || "กรุงเทพมหานคร");
+      const department = matchedVeh?.department || String(getVal("สังกัดแผนก", "สังกัด", "แผนก", "department") || "ฝ่ายขนส่ง");
+      const requesterName = String(getVal("ผู้แจ้งซ่อม", "ผู้แจ้ง", "requestername", "requester") || matchedVeh?.driverName || "พนักงานขับรถ").trim();
+      const assignedMechanic = String(getVal("ช่างผู้รับผิดชอบ", "ช่าง", "นายช่าง", "mechanic", "assignedmechanic") || "ช่างประจำอู่ TNB").trim();
+
+      const reqDateRaw = getVal("วันที่แจ้งซ่อม", "วันที่แจ้ง", "requestdate", "date", "createdat");
+      const createdAt = parseDateStr(reqDateRaw);
+      const year = new Date(createdAt).getFullYear();
+      const monthNum = new Date(createdAt).getMonth() + 1;
+      const monthStr = monthNum < 10 ? `0${monthNum}` : `${monthNum}`;
+      
+      let ticketNumber = String(getVal("เลขที่ใบแจ้งซ่อม", "เลขที่ใบสั่งซ่อม", "ticketnumber", "ticketno", "ticketid", "repno") || "").trim();
+      if (!ticketNumber) {
+        const randId = Math.floor(1000 + Math.random() * 9000);
+        ticketNumber = `REP-${year}-${monthStr}${randId.toString().slice(0, 2)}`;
+      }
+
+      const category = parseRepairCategory(getVal("หมวดหมู่งานซ่อม", "หมวดหมู่งาน", "หมวดหมู่", "category"));
+      const subCategoryName = String(getVal("งานย่อย", "หมวดหมู่ย่อย", "subcategory", "subcategoryname") || "").trim();
+      const priority = parsePriority(getVal("ความเร่งด่วน", "priority", "ระดับความด่วน"));
+      const status = parseStatus(getVal("สถานะงาน", "สถานะ", "status"));
+
+      const mileage = parseNum(getVal("เลขไมล์กม", "เลขไมล์", "currentmileage", "mileage"), matchedVeh?.currentMileage || 65000);
+
+      const partsCost = parseNum(getVal("ค่าอะไหล่บาท", "ค่าอะไหล่", "partscost", "partcost"));
+      const laborCost = parseNum(getVal("ค่าแรงบาท", "ค่าแรง", "laborcost", "ค่าบริการ"));
+      let totalCost = parseNum(getVal("รวมค่าใช้จ่ายบาท", "รวมค่าใช้จ่าย", "ยอดรวม", "totalcost", "cost"));
+      if (totalCost === 0 && (partsCost > 0 || laborCost > 0)) {
+        totalCost = partsCost + laborCost;
+      }
+
+      const compDateRaw = getVal("วันที่ซ่อมเสร็จจริง", "วันที่ซ่อมเสร็จ", "completiondate", "actualcompletiondate", "วันที่เสร็จ");
+      const actualCompletionDate = compDateRaw ? parseDateStr(compDateRaw) : (status === "completed" ? createdAt : undefined);
+
+      const ratingVal = parseNum(getVal("คะแนนประเมิน", "คะแนนความพึงพอใจ", "rating", "satisfaction"), 5);
+      const notes = String(getVal("หมายเหตุงานซ่อม", "หมายเหตุ", "notes", "remark", "mechanicnotes") || "").trim();
+
+      const partsListRaw = String(getVal("รายการอะไหล่ที่เปลี่ยน", "รายการอะไหล่", "partslist", "parts") || "").trim();
+      const partsList: RepairItemPart[] = [];
+      if (partsListRaw) {
+        // Split by comma or semicolon
+        const partsParts = partsListRaw.split(/[,;\n]/);
+        partsParts.forEach((pText, pIdx) => {
+          const trimmed = pText.trim();
+          if (trimmed) {
+            partsList.push({
+              id: `P-HIST-${Date.now().toString(36)}-${idx}-${pIdx}`,
+              name: trimmed,
+              quantity: 1,
+              unitPrice: partsCost > 0 && partsParts.length > 0 ? Math.round(partsCost / partsParts.length) : 0,
+              total: partsCost > 0 && partsParts.length > 0 ? Math.round(partsCost / partsParts.length) : 0,
+              postRepairCondition: "scrap"
+            });
+          }
+        });
+      } else if (partsCost > 0) {
+        partsList.push({
+          id: `P-HIST-${Date.now().toString(36)}-${idx}`,
+          name: `รายการอะไหล่และอุปกรณ์งานซ่อมหมวด ${CATEGORIES_CONFIG[category]?.nameTh || category}`,
+          quantity: 1,
+          unitPrice: partsCost,
+          total: partsCost,
+          postRepairCondition: "scrap"
+        });
+      }
+
+      const ticketId = `TK-HIST-${Date.now().toString(36)}-${idx}`;
+
+      parsedTickets.push({
+        id: ticketId,
+        ticketNumber: ticketNumber,
+        createdAt: createdAt,
+        updatedAt: actualCompletionDate || createdAt,
+        licensePlate: cleanPlate,
+        province: province,
+        vehicleBrand: vehicleBrand,
+        vehicleModel: vehicleModel,
+        vehicleType: vehicleType,
+        currentMileage: mileage,
+        department: department,
+        requesterName: requesterName,
+        category: category,
+        subCategoryName: subCategoryName || undefined,
+        priority: priority,
+        symptoms: symptoms || `บันทึกประวัติซ่อมบำรุงย้อนหลัง หมวด ${CATEGORIES_CONFIG[category]?.nameTh || category}`,
+        attachedImages: [],
+        status: status,
+        assignedMechanic: assignedMechanic,
+        actualCompletionDate: actualCompletionDate,
+        partsList: partsList,
+        partsCost: partsCost,
+        laborCost: laborCost,
+        totalCost: totalCost,
+        mechanicNotes: notes || undefined,
+        feedback: ratingVal > 0 ? {
+          id: `fb-${Date.now()}-${idx}`,
+          overallRating: Math.min(5, Math.max(1, ratingVal)),
+          technicianRating: Math.min(5, Math.max(1, ratingVal)),
+          serviceQualityRating: Math.min(5, Math.max(1, ratingVal)),
+          timelinessRating: Math.min(5, Math.max(1, ratingVal)),
+          comment: notes || "บันทึกผลการประเมินงานซ่อมย้อนหลัง",
+          createdAt: actualCompletionDate || createdAt
+        } : undefined,
+        history: [
+          {
+            id: `h-hist-${Date.now()}-${idx}`,
+            timestamp: createdAt,
+            status: status,
+            note: `บันทึกข้อมูลใบแจ้งซ่อมย้อนหลัง (Historical Record) วันที่ ${new Date(createdAt).toLocaleDateString("th-TH")}${status === "completed" ? " - สถานะ: ซ่อมเสร็จสมบูรณ์" : ""}`,
+            updatedBy: requesterName
+          }
+        ]
+      });
+    });
+
+    const totalCostSum = parsedTickets.reduce((sum, t) => sum + (t.totalCost || 0), 0);
+    const completedCount = parsedTickets.filter(t => t.status === "completed").length;
+
+    return {
+      success: parsedTickets.length > 0,
+      data: parsedTickets,
+      errors: errors,
+      rawCount: jsonRows.length,
+      summary: {
+        totalTickets: parsedTickets.length,
+        completedTickets: completedCount,
+        totalCost: totalCostSum,
+        vehiclesMatched: matchedVehicleSet.size
+      }
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      data: [],
+      errors: [`เกิดข้อผิดพลาดในการอ่านไฟล์: ${err.message || String(err)}`],
+      rawCount: 0,
+      summary: { totalTickets: 0, completedTickets: 0, totalCost: 0, vehiclesMatched: 0 }
+    };
+  }
 }
 
 // ----------------------------------------------------
@@ -1705,5 +2102,97 @@ export function exportFullDatabaseBackupToExcel(data: {
   XLSX.utils.book_append_sheet(workbook, wsRequisitions, "6. ประวัติเบิกจ่าย (REQ)");
 
   downloadWorkbook(workbook, `${filename}_ISO_Master_${new Date().toISOString().split("T")[0]}`);
+}
+
+// ----------------------------------------------------
+// 8. DAILY VEHICLE INSPECTION EXPORT (ISO-SHE-FRM-007)
+// ----------------------------------------------------
+
+export function exportDailyInspectionMatrixToExcel(
+  vehicle: VehicleRecord,
+  records: any[],
+  month: number,
+  year: number,
+  itemsTemplate: any[]
+) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthString = String(month).padStart(2, "0");
+  const monthPrefix = `${year}-${monthString}`;
+  const monthRecords = records.filter(
+    (r) => (r.vehicleId === vehicle.id || r.licensePlate === vehicle.licensePlate) && r.date.startsWith(monthPrefix)
+  );
+
+  const dailyRecordMap: { [day: number]: any } = {};
+  monthRecords.forEach((r) => {
+    const d = parseInt(r.date.split("-")[2], 10);
+    if (d >= 1 && d <= 31) {
+      dailyRecordMap[d] = r;
+    }
+  });
+
+  const matrixRows = itemsTemplate.map((tpl) => {
+    const row: any = {
+      "No.": tpl.no,
+      "ตำแหน่งที่ตรวจเช็ค (21 รายการ)": tpl.name,
+      "มาตรฐานการตรวจเช็ค": tpl.standard,
+      "วิธีการปฏิบัติ": tpl.method,
+      "ความถี่": tpl.frequency,
+    };
+
+    for (let d = 1; d <= 31; d++) {
+      if (d > daysInMonth) {
+        row[`วันที่ ${d}`] = "-";
+      } else {
+        const rec = dailyRecordMap[d];
+        if (rec) {
+          const itemRes = rec.results?.find((x: any) => x.no === tpl.no);
+          if (itemRes) {
+            row[`วันที่ ${d}`] = itemRes.status === "pass" ? "/" : itemRes.status === "fail" ? "x" : "O";
+          } else {
+            row[`วันที่ ${d}`] = rec.overallStatus === "pass" ? "/" : "x";
+          }
+        } else {
+          row[`วันที่ ${d}`] = "";
+        }
+      }
+    }
+
+    return row;
+  });
+
+  const workbook = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(matrixRows);
+  XLSX.utils.book_append_sheet(workbook, ws, `ตรวจเช็ค ${vehicle.licensePlate}`);
+
+  const filename = `TNB_Daily_Inspection_${vehicle.licensePlate}_${year}_M${monthString}`;
+  downloadWorkbook(workbook, filename);
+}
+
+export function exportDailyInspectionLogsToExcel(records: any[], filename = "TNB_Daily_Inspection_Logs") {
+  const rows = records.map((r) => ({
+    "รหัสเอกสาร": r.docNumber,
+    "วันที่ตรวจ": r.date,
+    "เวลา": r.time || "07:30",
+    "ทะเบียนรถ": r.licensePlate,
+    "ERP No.": r.erpNo || "",
+    "จังหวัด": r.province || "กรุงเทพมหานคร",
+    "ยี่ห้อ/รุ่น": `${r.vehicleBrand} ${r.vehicleModel}`,
+    "ประเภทรถ": r.vehicleType,
+    "สังกัด/แผนก": r.department,
+    "พนักงานขับรถ (พขร.)": r.driverName,
+    "ผู้ตรวจสอบ": r.inspectorName,
+    "เลขไมล์ (กม.)": r.currentMileage,
+    "ผลการตรวจรวม": r.overallStatus === "pass" ? "ปกติ 100%" : r.overallStatus === "fail" ? "พบข้อบกพร่อง" : "งดเว้น",
+    "จำนวนจุดบกพร่อง": r.defectCount || 0,
+    "รายการที่ชำรุด": r.results?.filter((x: any) => x.status === "fail").map((x: any) => `${x.name} (${x.issueDescription || "ชำรุด"})`).join("; ") || "-",
+    "ใบแจ้งซ่อมที่เปิด": r.ticketNumber || "-",
+    "สถานที่ตรวจ": r.locationName || "-",
+    "หมายเหตุ": r.notes || ""
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, ws, "บันทึกการตรวจประจำวัน");
+  downloadWorkbook(workbook, `${filename}_${new Date().toISOString().split("T")[0]}`);
 }
 

@@ -33,6 +33,7 @@ interface RequesterPortalProps {
   tickets: RepairTicket[];
   onSelectTicket: (ticket: RepairTicket) => void;
   onOpenNewModal: () => void;
+  onOpenBackdatedModal?: () => void;
   onOpenPrint: (ticket: RepairTicket) => void;
 }
 
@@ -61,6 +62,7 @@ export const RequesterPortal: React.FC<RequesterPortalProps> = ({
   tickets,
   onSelectTicket,
   onOpenNewModal,
+  onOpenBackdatedModal,
   onOpenPrint
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -134,6 +136,17 @@ export const RequesterPortal: React.FC<RequesterPortalProps> = ({
               <PlusCircle className="w-4 h-4 text-white" />
               <span>+ เปิดใบแจ้งซ่อมรถใหม่ / แจ้งจุดรถเสีย</span>
             </button>
+
+            {onOpenBackdatedModal && (
+              <button
+                id="btn-requester-backdated-request"
+                onClick={onOpenBackdatedModal}
+                className="bg-amber-600/90 hover:bg-amber-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center space-x-2 text-sm border border-amber-400/40 transform active:scale-95"
+              >
+                <Calendar className="w-4 h-4 text-amber-200" />
+                <span>📜 เพิ่มใบแจ้งซ่อมย้อนหลัง (บันทึกประวัติ)</span>
+              </button>
+            )}
 
             <div className="flex items-center space-x-2 text-xs text-slate-200 bg-slate-900/60 px-3 py-2 rounded-xl border border-slate-700">
               <MapPin className="w-4 h-4 text-rose-400" />

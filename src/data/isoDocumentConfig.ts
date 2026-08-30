@@ -70,6 +70,20 @@ export const ISO_DOCUMENT_REGISTRY: Record<string, IsoDocumentMeta> = {
     approvedBy: "ผู้จัดการคลังสินค้าและพัสดุ",
     description: "ควบคุมรหัสพัสดุ ตำแหน่งชั้นวาง (Rack) ระดับ Minimum Stock Level และการบริหารอะไหล่ Rebuild สำรอง"
   },
+  daily_inspection: {
+    docCode: "TNB-SHE-FRM-007",
+    revision: "Rev.03",
+    fullCode: "TNB-SHE-FRM-007-Rev.03",
+    titleTh: "แบบฟอร์มตรวจสอบความพร้อมและสภาพรถประจำวัน 21 รายการ (Daily Pre-Trip Vehicle Inspection 31-Day Matrix)",
+    titleEn: "Daily Pre-Trip Vehicle Inspection 21-Checkpoints 31-Day Control Sheet",
+    category: "checklist",
+    effectiveDate: "01/01/2026",
+    standardReference: "ISO 39001:2012 (Road Traffic Safety Management) & ISO 9001:2015",
+    retentionPeriod: "3 ปี",
+    ownerDepartment: "ฝ่ายความปลอดภัย อาชีวอนามัย และสิ่งแวดล้อม (SHE & Fleet Dept.)",
+    approvedBy: "เจ้าหน้าที่ความปลอดภัย (จป.วิชาชีพ) & ผู้จัดการฝ่ายขนส่ง",
+    description: "ตารางบันทึกการตรวจเช็คสภาพความพร้อมของยานพาหนะ 21 รายการก่อนเริ่มปฏิบัติงานประจำวัน ตลอด 31 วันในรอบเดือน เพื่อป้องกันอุบัติเหตุและการ Breakdown กลางทาง"
+  },
   goods_receipt: {
     docCode: "TNB-MT-GR-001",
     revision: "Rev.01",

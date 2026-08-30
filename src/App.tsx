@@ -8,11 +8,13 @@ import { GoodsRequisitionView } from "./components/GoodsRequisitionView";
 import { PartListView } from "./components/PartListView";
 import { RepairRequestModal } from "./components/RepairRequestModal";
 import { TicketDetailModal } from "./components/TicketDetailModal";
+import { TicketImportModal } from "./components/TicketImportModal";
 import { QuickSearchModal } from "./components/QuickSearchModal";
 import { PrintWorkOrderModal } from "./components/PrintWorkOrderModal";
 import { DataBackupExportModal } from "./components/DataBackupExportModal";
 import { WorkflowGuideView } from "./components/WorkflowGuideView";
 import { PMPlanView } from "./components/PMPlanView";
+import { DailyInspectionView } from "./components/DailyInspectionView";
 import { INITIAL_TICKETS, DEMO_SAMPLE_TICKETS } from "./data/mockData";
 import { 
   INITIAL_VEHICLES, 
@@ -26,6 +28,7 @@ import {
   DEMO_GOODS_REQUISITIONS
 } from "./data/initialFleetData";
 import { INITIAL_PM_SCHEDULES_2026, generateAnnualPMPlanForFleet, MONTH_NAMES_TH } from "./data/pmPlanData";
+import { INITIAL_DAILY_INSPECTIONS } from "./data/dailyInspectionData";
 import { 
   RepairTicket, 
   RepairStatus, 
@@ -35,7 +38,8 @@ import {
   InventoryItem, 
   GoodsReceiptRecord, 
   GoodsRequisitionRecord,
-  PMMonthlyScheduleItem
+  PMMonthlyScheduleItem,
+  DailyVehicleInspectionRecord
 } from "./types";
 import { TnbLogo } from "./components/TnbLogo";
 import { normalizeLicensePlate } from "./utils/excelImportExport";
@@ -46,6 +50,7 @@ const INVENTORY_STORAGE_KEY = "tnb_fleet_clean_inventory_v5";
 const RECEIPTS_STORAGE_KEY = "tnb_fleet_clean_receipts_v5";
 const REQUISITIONS_STORAGE_KEY = "tnb_fleet_clean_requisitions_v5";
 const PM_SCHEDULES_STORAGE_KEY = "tnb_fleet_clean_pm_schedules_v1";
+const DAILY_INSPECTIONS_STORAGE_KEY = "tnb_fleet_clean_daily_inspections_v1";
 
 export default function App() {
   // Navigation View
@@ -74,6 +79,20 @@ export default function App() {
       console.error("Error reading PM schedules localStorage:", e);
     }
     return INITIAL_PM_SCHEDULES_2026;
+  });
+
+  // Daily Inspection Records State
+  const [dailyInspections, setDailyInspections] = useState<DailyVehicleInspectionRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(DAILY_INSPECTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error("Error reading daily inspections localStorage:", e);
+    }
+    return INITIAL_DAILY_INSPECTIONS;
   });
 
   // Vehicles State
@@ -125,6 +144,8 @@ export default function App() {
 
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isBackdatedModalMode, setIsBackdatedModalMode] = useState(false);
+  const [isTicketImportModalOpen, setIsTicketImportModalOpen] = useState(false);
   const [selectedVehicleForRepair, setSelectedVehicleForRepair] = useState<VehicleRecord | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<RepairTicket | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -181,6 +202,93 @@ export default function App() {
       console.error("Error saving PM schedules localStorage:", e);
     }
   }, [pmSchedules]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(dailyInspections));
+    } catch (e) {
+      console.error("Error saving daily inspections localStorage:", e);
+    }
+  }, [dailyInspections]);
+
+  // Daily Inspection Handlers
+  const handleAddDailyInspection = (record: DailyVehicleInspectionRecord, autoCreateTicket = false) => {
+    setDailyInspections((prev) => [record, ...prev]);
+
+    // Update vehicle mileage if higher
+    if (record.vehicleId && record.currentMileage) {
+      setVehicles((prev) =>
+        prev.map((v) =>
+          v.id === record.vehicleId
+            ? { ...v, currentMileage: Math.max(v.currentMileage || 0, record.currentMileage), updatedAt: new Date().toISOString() }
+            : v
+        )
+      );
+    }
+
+    // If autoCreateTicket requested and has defects, create a repair ticket
+    if (autoCreateTicket && record.overallStatus === "fail" && record.results) {
+      const defectItems = record.results.filter((r) => r.status === "fail");
+      if (defectItems.length > 0) {
+        const symptomDesc = defectItems
+          .map((d) => `• [ข้อ ${d.no} ${d.name}]: ${d.issueDescription || "ชำรุด/ผิดปกติ"}`)
+          .join("\n");
+
+        const ticketNo = `TNB-DCI-${Date.now().toString().slice(-4)}`;
+        const newTicket: RepairTicket = {
+          id: `tkt-dci-${Date.now()}`,
+          ticketNumber: ticketNo,
+          licensePlate: record.licensePlate,
+          province: record.province,
+          vehicleType: record.vehicleType as any,
+          vehicleBrand: record.vehicleBrand,
+          vehicleModel: record.vehicleModel,
+          department: record.department,
+          requesterName: record.inspectorName || record.driverName,
+          requesterPhone: "081-999-8888",
+          priority: "high",
+          category: "inspection",
+          symptoms: `[ตรวจพบจากการตรวจสภาพรถประจำวัน 21 ข้อ - ${record.docNumber}]\n${symptomDesc}`,
+          attachedImages: [],
+          status: "pending",
+          assignedMechanic: "ทีมช่างซ่อมบำรุง TNB",
+          partsList: [],
+          partsCost: 0,
+          laborCost: 0,
+          totalCost: 0,
+          currentMileage: record.currentMileage,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          history: [
+            {
+              id: `h-1-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              status: "pending",
+              note: `แจ้งซ่อมอัตโนมัติจากผลตรวจสภาพรถประจำวัน ${record.docNumber} (พบชำรุด ${defectItems.length} รายการ)`,
+              updatedBy: record.inspectorName || "ระบบตรวจสภาพรถ"
+            }
+          ],
+          mechanicNotes: `รายการที่ตรวจไม่ผ่าน:\n${symptomDesc}`
+        };
+        setTickets((prev) => [newTicket, ...prev]);
+      }
+    }
+  };
+
+  const handleUpdateDailyInspection = (updated: DailyVehicleInspectionRecord) => {
+    setDailyInspections((prev) =>
+      prev.map((r) => (r.id === updated.id ? updated : r))
+    );
+  };
+
+  const handleDeleteDailyInspection = (id: string) => {
+    setDailyInspections((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleResetToSampleDailyInspections = () => {
+    setDailyInspections(INITIAL_DAILY_INSPECTIONS);
+    localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(INITIAL_DAILY_INSPECTIONS));
+  };
 
   // PM Schedule Handlers
   const handleAddPMSchedule = (newSchedule: PMMonthlyScheduleItem) => {
@@ -330,6 +438,52 @@ export default function App() {
     }
   };
 
+  // Bulk Historical Tickets Import Handler (Excel/CSV)
+  const handleBulkImportTickets = (
+    importedList: RepairTicket[],
+    mode: "upsert" | "append" | "replace"
+  ) => {
+    if (mode === "replace") {
+      setTickets(importedList);
+    } else if (mode === "append") {
+      setTickets((prev) => [...importedList, ...prev]);
+    } else {
+      // Upsert mode
+      setTickets((prev) => {
+        const existingMap = new Map<string, RepairTicket>();
+        prev.forEach((t) => existingMap.set(t.ticketNumber || t.id, t));
+        importedList.forEach((t) => existingMap.set(t.ticketNumber || t.id, t));
+        return Array.from(existingMap.values());
+      });
+    }
+
+    // Auto-update vehicle mileages from imported records
+    setVehicles((prev) => {
+      const updatedVehicles = [...prev];
+      importedList.forEach((t) => {
+        if (t.currentMileage && t.currentMileage > 0) {
+          const vIdx = updatedVehicles.findIndex(
+            (v) => v.licensePlate.trim().toUpperCase() === t.licensePlate.trim().toUpperCase()
+          );
+          if (vIdx >= 0) {
+            updatedVehicles[vIdx] = {
+              ...updatedVehicles[vIdx],
+              currentMileage: Math.max(updatedVehicles[vIdx].currentMileage, t.currentMileage),
+              updatedAt: new Date().toISOString()
+            };
+          }
+        }
+      });
+      return updatedVehicles;
+    });
+  };
+
+  const handleOpenNewTicketModal = (isBackdated = false, vehicle: VehicleRecord | null = null) => {
+    setSelectedVehicleForRepair(vehicle);
+    setIsBackdatedModalMode(isBackdated);
+    setIsNewModalOpen(true);
+  };
+
   // Handle update ticket
   const handleUpdateTicket = (updatedTicket: RepairTicket) => {
     setTickets((prev) =>
@@ -398,6 +552,10 @@ export default function App() {
     setVehicles((prev) => prev.filter((v) => v.id !== vehicleId));
   };
 
+  const handleRequestRepairForVehicle = (vehicle: VehicleRecord, isBackdated = false) => {
+    handleOpenNewTicketModal(isBackdated, vehicle);
+  };
+
   const handleRestoreAllVehicles = () => {
     setVehicles(FULL_TNB_FLEET_DATA);
     try {
@@ -456,12 +614,6 @@ export default function App() {
         return updated;
       });
     }
-  };
-
-  // Quick Repair for a specific vehicle from Registry
-  const handleRequestRepairForVehicle = (vehicle: VehicleRecord) => {
-    setSelectedVehicleForRepair(vehicle);
-    setIsNewModalOpen(true);
   };
 
   // Goods Receipt Handlers
@@ -607,38 +759,42 @@ export default function App() {
 
   // Clear all data for production real operation (ล้างระบบทั้งหมดเป็น 0 เพื่อเริ่มใช้งานจริง)
   const handleClearAllData = () => {
-    if (window.confirm("⚠️ ยืนยันการล้างข้อมูลทั้งระบบ?\n\nระบบจะลบข้อมูลทั้งหมด ได้แก่:\n- ประวัติและใบแจ้งซ่อมทั้งหมด (0 รายการ)\n- ประวัติการรับของเข้าคลัง (0 รายการ)\n- ประวัติการเบิกของ/อะไหล่ (0 รายการ)\n- แผน PM รถยนต์ (0 รายการ)\n- ข้อมูลสารระบบทะเบียนรถ (0 คัน)\n- รายการพัสดุในคลังสินค้า (0 รายการ)\n\nเพื่อให้ระบบสะอาด 100% พร้อมสำหรับการเริ่มบันทึกใช้งานจริงของบริษัท TNB Logistics")) {
+    if (window.confirm("⚠️ ยืนยันการล้างข้อมูลทั้งระบบ?\n\nระบบจะลบข้อมูลทั้งหมด ได้แก่:\n- ประวัติและใบแจ้งซ่อมทั้งหมด (0 รายการ)\n- ประวัติการรับของเข้าคลัง (0 รายการ)\n- ประวัติการเบิกของ/อะไหล่ (0 รายการ)\n- แผน PM รถยนต์ (0 รายการ)\n- ผลการตรวจสภาพรถประจำวัน (0 รายการ)\n- ข้อมูลสารระบบทะเบียนรถ (0 คัน)\n- รายการพัสดุในคลังสินค้า (0 รายการ)\n\nเพื่อให้ระบบสะอาด 100% พร้อมสำหรับการเริ่มบันทึกใช้งานจริงของบริษัท TNB Logistics")) {
       setTickets([]);
       setVehicles([]);
       setInventory([]);
       setReceipts([]);
       setRequisitions([]);
       setPmSchedules([]);
+      setDailyInspections([]);
       localStorage.removeItem(TICKETS_STORAGE_KEY);
       localStorage.removeItem(VEHICLES_STORAGE_KEY);
       localStorage.removeItem(INVENTORY_STORAGE_KEY);
       localStorage.removeItem(RECEIPTS_STORAGE_KEY);
       localStorage.removeItem(REQUISITIONS_STORAGE_KEY);
       localStorage.removeItem(PM_SCHEDULES_STORAGE_KEY);
+      localStorage.removeItem(DAILY_INSPECTIONS_STORAGE_KEY);
       localStorage.clear();
     }
   };
 
   // Load demo sample dataset for testing
   const handleLoadDemoData = () => {
-    if (window.confirm("ต้องการโหลดชุดข้อมูลตัวอย่าง (Demo Data: 8 คัน, แผน PM, รายการอะไหล่, ใบแจ้งซ่อม, ใบรับ และใบเบิก) สำหรับการทดลองใช้งานและดูตัวอย่างรายงานสรุปหรือไม่?")) {
+    if (window.confirm("ต้องการโหลดชุดข้อมูลตัวอย่าง (Demo Data: 8 คัน, แผน PM, ผลตรวจประจำวัน, รายการอะไหล่, ใบแจ้งซ่อม, ใบรับ และใบเบิก) สำหรับการทดลองใช้งานและดูตัวอย่างรายงานสรุปหรือไม่?")) {
       setTickets(DEMO_SAMPLE_TICKETS);
       setVehicles(DEMO_TNB_VEHICLES);
       setInventory(DEMO_INVENTORY_ITEMS);
       setReceipts(DEMO_GOODS_RECEIPTS);
       setRequisitions(DEMO_GOODS_REQUISITIONS);
       setPmSchedules(INITIAL_PM_SCHEDULES_2026);
+      setDailyInspections(INITIAL_DAILY_INSPECTIONS);
       localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(DEMO_SAMPLE_TICKETS));
       localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(DEMO_TNB_VEHICLES));
       localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(DEMO_INVENTORY_ITEMS));
       localStorage.setItem(RECEIPTS_STORAGE_KEY, JSON.stringify(DEMO_GOODS_RECEIPTS));
       localStorage.setItem(REQUISITIONS_STORAGE_KEY, JSON.stringify(DEMO_GOODS_REQUISITIONS));
       localStorage.setItem(PM_SCHEDULES_STORAGE_KEY, JSON.stringify(INITIAL_PM_SCHEDULES_2026));
+      localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(INITIAL_DAILY_INSPECTIONS));
     }
   };
 
@@ -673,28 +829,26 @@ export default function App() {
         vehicleCount={vehicles.length}
         inventoryCount={inventory.length}
         pmCount={pmSchedules.length}
+        dailyInspectionCount={dailyInspections.length}
         onClearAllData={handleClearAllData}
         onLoadDemoData={handleLoadDemoData}
-        onOpenNewModal={() => {
-          setSelectedVehicleForRepair(null);
-          setIsNewModalOpen(true);
-        }}
+        onOpenNewModal={() => handleOpenNewTicketModal(false)}
+        onOpenBackdatedTicketModal={() => handleOpenNewTicketModal(true)}
+        onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}
         onOpenSearchModal={() => setIsSearchModalOpen(true)}
         onOpenExportBackupModal={() => setIsExportBackupModalOpen(true)}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-8">
         
         {/* Module 1: หน้าคนแจ้ง (Requester Portal) */}
         {currentView === "requester" && (
           <RequesterPortal
             tickets={tickets}
             onSelectTicket={handleSelectTicket}
-            onOpenNewModal={() => {
-              setSelectedVehicleForRepair(null);
-              setIsNewModalOpen(true);
-            }}
+            onOpenNewModal={() => handleOpenNewTicketModal(false)}
+            onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
             onOpenPrint={handleOpenPrint}
           />
         )}
@@ -704,10 +858,9 @@ export default function App() {
           <WorkOperationsPortal
             tickets={tickets}
             onSelectTicket={handleSelectTicket}
-            onOpenNewModal={() => {
-              setSelectedVehicleForRepair(null);
-              setIsNewModalOpen(true);
-            }}
+            onOpenNewModal={() => handleOpenNewTicketModal(false)}
+            onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
+            onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}
             onQuickStatusChange={handleQuickStatusChange}
           />
         )}
@@ -724,6 +877,19 @@ export default function App() {
             onBulkImportVehicles={handleBulkImportVehicles}
             onRestoreAllVehicles={handleRestoreAllVehicles}
             onDeleteAllVehicles={handleClearAllVehicles}
+          />
+        )}
+
+        {/* Module 3.2: ตรวจสภาพรถประจำวัน (Daily Vehicle Inspection ISO-SHE-FRM-007) */}
+        {currentView === "daily_inspection" && (
+          <DailyInspectionView
+            vehicles={vehicles}
+            tickets={tickets}
+            dailyInspections={dailyInspections}
+            onAddDailyInspection={handleAddDailyInspection}
+            onUpdateDailyInspection={handleUpdateDailyInspection}
+            onDeleteDailyInspection={handleDeleteDailyInspection}
+            onLoadSampleMonthlyInspections={handleResetToSampleDailyInspections}
           />
         )}
 
@@ -813,58 +979,79 @@ export default function App() {
       </footer>
 
       {/* Modals */}
-      <RepairRequestModal
-        isOpen={isNewModalOpen}
-        onClose={() => {
-          setIsNewModalOpen(false);
-          setSelectedVehicleForRepair(null);
-        }}
-        onSubmitTicket={handleAddNewTicket}
-        vehicles={vehicles}
-        initialVehicle={selectedVehicleForRepair}
-      />
+      {isNewModalOpen && (
+        <RepairRequestModal
+          isOpen={isNewModalOpen}
+          onClose={() => {
+            setIsNewModalOpen(false);
+            setIsBackdatedModalMode(false);
+            setSelectedVehicleForRepair(null);
+          }}
+          onSubmitTicket={handleAddNewTicket}
+          vehicles={vehicles}
+          initialVehicle={selectedVehicleForRepair}
+          initialIsBackdated={isBackdatedModalMode}
+        />
+      )}
 
-      <TicketDetailModal
-        ticket={selectedTicket}
-        isOpen={isDetailModalOpen}
-        onClose={() => {
-          setIsDetailModalOpen(false);
-          setSelectedTicket(null);
-        }}
-        onUpdateTicket={handleUpdateTicket}
-        onOpenPrint={handleOpenPrint}
-        inventory={inventory}
-        vehicles={vehicles}
-        onDisburseStockPart={handleDisburseStockPart}
-        onRestockPart={handleRestockPart}
-      />
+      {isTicketImportModalOpen && (
+        <TicketImportModal
+          isOpen={isTicketImportModalOpen}
+          onClose={() => setIsTicketImportModalOpen(false)}
+          existingVehicles={vehicles}
+          onImportTickets={handleBulkImportTickets}
+        />
+      )}
 
-      <QuickSearchModal
-        isOpen={isSearchModalOpen}
-        onClose={() => setIsSearchModalOpen(false)}
-        tickets={tickets}
-        onSelectTicket={handleSelectTicket}
-      />
+      {isDetailModalOpen && selectedTicket && (
+        <TicketDetailModal
+          ticket={selectedTicket}
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedTicket(null);
+          }}
+          onUpdateTicket={handleUpdateTicket}
+          onOpenPrint={handleOpenPrint}
+          inventory={inventory}
+          vehicles={vehicles}
+          onDisburseStockPart={handleDisburseStockPart}
+          onRestockPart={handleRestockPart}
+        />
+      )}
 
-      <PrintWorkOrderModal
-        ticket={ticketToPrint}
-        isOpen={isPrintModalOpen}
-        onClose={() => {
-          setIsPrintModalOpen(false);
-          setTicketToPrint(null);
-        }}
-      />
+      {isSearchModalOpen && (
+        <QuickSearchModal
+          isOpen={isSearchModalOpen}
+          onClose={() => setIsSearchModalOpen(false)}
+          tickets={tickets}
+          onSelectTicket={handleSelectTicket}
+        />
+      )}
 
-      <DataBackupExportModal
-        isOpen={isExportBackupModalOpen}
-        onClose={() => setIsExportBackupModalOpen(false)}
-        vehicles={vehicles}
-        inventory={inventory}
-        tickets={tickets}
-        receipts={receipts}
-        requisitions={requisitions}
-        pmSchedules={pmSchedules}
-      />
+      {isPrintModalOpen && ticketToPrint && (
+        <PrintWorkOrderModal
+          ticket={ticketToPrint}
+          isOpen={isPrintModalOpen}
+          onClose={() => {
+            setIsPrintModalOpen(false);
+            setTicketToPrint(null);
+          }}
+        />
+      )}
+
+      {isExportBackupModalOpen && (
+        <DataBackupExportModal
+          isOpen={isExportBackupModalOpen}
+          onClose={() => setIsExportBackupModalOpen(false)}
+          vehicles={vehicles}
+          inventory={inventory}
+          tickets={tickets}
+          receipts={receipts}
+          requisitions={requisitions}
+          pmSchedules={pmSchedules}
+        />
+      )}
     </div>
   );
 }
