@@ -1,0 +1,412 @@
+export type RepairCategory = 
+  | 'suspension' // ระบบช่วงล่าง & เบรก
+  | 'lubricant'  // ระบบหล่อลื่น & ของเหลว
+  | 'lighting'   // ระบบแสงสว่าง & ไฟฟ้า
+  | 'engine'     // เครื่องยนต์ & ระบบส่งกำลัง
+  | 'tires'      // ยาง & ล้อ
+  | 'aircon'     // ระบบปรับอากาศ & แอร์
+  | 'bodywork'   // ตัวถัง สี & กระจก
+  | 'inspection' // ตรวจเช็คตามระยะทาง (PM)
+  | 'other';     // อื่นๆ / ทั่วไป
+
+export type RepairStatus = 
+  | 'pending'       // รอดำเนินการ / รับเรื่อง
+  | 'inspecting'    // กำลังตรวจเช็คประเมิน
+  | 'waiting_parts' // รออะไหล่ / อนุมัติสั่งซื้อ
+  | 'in_progress'   // กำลังดำเนินการซ่อม
+  | 'testing'       // ทดสอบคุณภาพ (QC)
+  | 'completed'     // ซ่อมเสร็จสมบูรณ์ / พร้อมส่งมอบ
+  | 'cancelled';    // ยกเลิก
+
+export type Priority = 'critical' | 'high' | 'medium' | 'low';
+
+export type VehicleType = 
+  | 'tractor_6w'      // หัวลาก 6 ล้อ
+  | 'tractor_10w'     // หัวลาก 10 ล้อ
+  | 'trailer_2axle'   // หาง 2 เพลา
+  | 'trailer_3axle'   // หาง 3 เพลา
+  | 'box_truck_6w'    // 6 ล้อตู้ทึบ
+  | 'jumbo_4w'        // 4 ล้อจัมโบ้
+  | 'pickup_box'      // รถกระบะตู้
+  | 'sedan'           // รถเก๋ง
+  | 'forklift'        // รถโฟล์คลิฟท์
+  | 'pickup'          // รถกระบะ (fallback)
+  | 'truck'           // รถบรรทุก (fallback)
+  | 'van'             // รถตู้ (fallback)
+  | 'suv'             // รถ SUV (fallback)
+  | 'motorcycle'      // มอเตอร์ไซค์ (fallback)
+  | 'other';
+
+export interface SubCategoryMeta {
+  id: string;
+  nameTh: string;
+  nameEn: string;
+  description?: string;
+}
+
+export type PostRepairCondition = 
+  | 'repairable'   // สามารถซ่อมได้ / นำกลับมารีบิลด์ใช้งานต่อได้ (Repairable / Rebuilt)
+  | 'scrap'        // เสีย / ชำรุดใช้งานไม่ได้ / จำหน่ายเป็นซาก (Scrap / Beyond Repair)
+  | 'repaired'     // ซ่อมแซมเสร็จสมบูรณ์ / ใช้งานได้ปกติ (Repaired & Normal)
+  | 'normal';      // ตรวจเช็คแล้วปกติ ไม่ต้องเปลี่ยน
+
+export interface RepairItemPart {
+  id: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  inventoryItemId?: string;
+  itemCode?: string;
+  unit?: string;
+  isDeductedFromStock?: boolean;
+  requisitionId?: string;
+  requisitionNumber?: string;
+  disbursedAt?: string;
+  disbursedBy?: string;
+  // Post-repair part assessment
+  postRepairCondition?: PostRepairCondition; // สามารถซ่อมได้ หรือ เสีย
+  postRepairNote?: string; // หมายเหตุสภาพชิ้นส่วนที่ถอดออก
+  salvagedToStock?: boolean; // นำชิ้นส่วนที่ซ่อมได้กลับเข้าคลัง
+}
+
+export interface StatusHistoryLog {
+  id: string;
+  timestamp: string;
+  status: RepairStatus;
+  note: string;
+  updatedBy: string;
+}
+
+export interface RepairIssueItem {
+  id: string;
+  title: string;
+  category: RepairCategory;
+  subCategoryId?: string;
+  subCategoryName?: string;
+  description: string;
+  urgency?: Priority;
+  isResolved?: boolean;
+  images?: string[];
+}
+
+export interface RepairFeedback {
+  id: string;
+  rating?: number; // 1-5 overall
+  overallRating?: number; // 1-5 overall score
+  technicianRating: number; // 1-5 rating for the assigned technician
+  serviceQualityRating?: number; // 1-5 rating for repair quality
+  timelinessRating?: number; // 1-5 rating for speed/on-time delivery
+  comment: string;
+  reviewerName?: string;
+  evaluatorName?: string;
+  createdAt: string;
+  tags?: string[];
+}
+
+export interface AiDiagnosisResult {
+  summary: string;
+  possibleCauses: string[];
+  recommendedChecks: string[];
+  suggestedParts: {
+    name: string;
+    estimatedCost: number;
+    necessity: string;
+  }[];
+  estimatedLaborCost: number;
+  estimatedTotalCost: number;
+  estimatedRepairTimeHours: number;
+  urgencyLevel: string;
+  safetyWarning: string;
+}
+
+export interface BreakdownLocation {
+  isEmergencyBreakdown: boolean;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  locationName?: string;
+  landmark?: string;
+  landmarks?: string;
+  highwayNumber?: string;
+  kilometerMarker?: string;
+  roadName?: string;
+  pinLabel?: string;
+  accuracy?: number;
+}
+
+export interface RepairTicket {
+  id: string;
+  ticketNumber: string;
+  createdAt: string; // ISO date string
+  updatedAt: string;
+  licensePlate: string;
+  province: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleType: VehicleType;
+  currentMileage: number;
+  department: string;
+  requesterName: string;
+  requesterPhone?: string;
+  breakdownLocation?: BreakdownLocation; // GPS / Map location if emergency breakdown
+  category: RepairCategory;
+  subCategoryId?: string;
+  subCategoryName?: string;
+  priority: Priority;
+  symptoms: string;
+  issues?: RepairIssueItem[]; // Support for multiple issues in a single ticket
+  attachedImages: string[];
+  completionImages?: string[];
+  status: RepairStatus;
+  assignedMechanic?: string;
+  estimatedCompletionDate?: string;
+  actualCompletionDate?: string;
+  partsList: RepairItemPart[];
+  partsCost: number;
+  laborCost: number;
+  totalCost: number;
+  feedback?: RepairFeedback; // Feedback and rating for completed jobs
+  aiDiagnosis?: AiDiagnosisResult;
+  mechanicNotes?: string;
+  // Post-repair overall assessment
+  postRepairEquipmentStatus?: 'repairable' | 'scrap' | 'repaired_good' | 'mixed' | 'not_applicable';
+  postRepairEquipmentNote?: string;
+  history: StatusHistoryLog[];
+}
+
+export interface CategoryMeta {
+  id: RepairCategory;
+  nameTh: string;
+  nameEn: string;
+  iconName: string;
+  color: string;
+  bgLight: string;
+  borderColor: string;
+  description: string;
+  commonSymptoms: string[];
+  subCategories: SubCategoryMeta[];
+}
+
+export interface StatusMeta {
+  id: RepairStatus;
+  labelTh: string;
+  color: string;
+  textColor: string;
+  bgColor: string;
+  badgeBg: string;
+  stepNumber: number;
+  description: string;
+}
+
+export interface ExecutiveReportData {
+  executiveOverview: string;
+  keyHighlights: string[];
+  costAnalysis: string;
+  riskAndAlerts: string[];
+  strategicRecommendations: string[];
+  fleetHealthScore: number;
+  generatedAt?: string;
+}
+
+export type VehicleStatus = 'active' | 'under_repair' | 'maintenance_due' | 'inactive';
+export type FuelType = 'diesel' | 'gasoline' | 'cng_ngv' | 'ev' | 'hybrid';
+
+export interface VehicleRecord {
+  id: string;
+  licensePlate: string;
+  oldLicensePlate?: string; // ทะเบียนเก่า
+  carrierCompany?: string; // ประกอบการขนส่ง e.g. TNB, BBNP, ครูเสือ
+  erpNo?: string; // No. ERP e.g. T10-NO.01, TL001
+  province: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleType: VehicleType;
+  department: string;
+  driverName: string;
+  driverId?: string;
+  currentMileage: number;
+  status: VehicleStatus;
+  color?: string; // สีตัวรถ
+  fuelType?: FuelType;
+  year?: number;
+  registrationDate?: string; // วันที่จดทะเบียน
+  chassisNumber?: string; // เลขตัวถัง(คัสซี)
+  engineNumber?: string; // เลขเครื่องยนต์
+  taxExpiryDate?: string; // วันที่หมดอายุภาษี
+  taxRate?: string; // อัตราภาษี
+  actInsuranceFee?: string; // ค่าพรบ
+  actInsuranceExpiry?: string; // พรบ.หมด
+  actInsuranceCompany?: string; // บริษัท พรบ.
+  vehicleInsuranceCompany?: string; // ชื่อประกันภัยรถ
+  vehicleInsuranceType?: string; // ประเภทประกันภัยรถ e.g. ชั้น 1, ชั้น 3
+  vehicleInsuranceCoverage?: string; // วงเงินประกันภัยรถ
+  vehicleInsuranceStartDate?: string; // วันเริ่มคุ้มครองประกันรถ
+  vehicleInsuranceEndDate?: string; // สิ้นสุดระยะเวลาประกันรถ
+  vehicleInsurancePremium?: string; // ค่าเบี้ยประกันรถ
+  cargoInsuranceCompany?: string; // ชื่อประกันภัยสินค้า
+  cargoInsuranceCoverage?: string; // วงเงินประกันภัยสินค้า
+  cargoInsuranceStartDate?: string; // วันเริ่มคุ้มครองสินค้า
+  cargoInsuranceEndDate?: string; // สิ้นสุดประกันสินค้า
+  cargoInsurancePremium?: string; // ค่าเบี้ยประกันสินค้า
+  gpsProvider?: string; // GPS Provider e.g. CARTRACK, WAYLAR, DTC
+  insuranceExpiryDate?: string;
+  lastServiceDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  code: string;
+  name: string;
+  category: RepairCategory;
+  unit: string; // e.g. "ชิ้น", "ลิตร", "ชุด", "ลูก", "เส้น", "กล่อง", "ถัง"
+  currentStock: number;
+  minStockLevel: number;
+  unitCost: number; // ราคาทุน
+  unitSellingPrice?: number; // ราคาเบิก/คิดมูลค่างาน
+  locationRack?: string; // ตำแหน่งชั้นวาง e.g. "A-01", "B-03"
+  supplier?: string;
+  brand?: string; // ยี่ห้อ/แบรนด์อะไหล่
+  specification?: string; // สเปก/รุ่นย่อย
+  compatibleVehicleTypes?: VehicleType[]; // รองรับประเภทรถ
+  isRepairableCategory?: boolean; // ชิ้นส่วนประเภทนี้สามารถซ่อม/Rebuild ได้หรือไม่
+  condition?: 'new' | 'rebuilt' | 'spare'; // สภาพสินค้า (ของใหม่ / รีบิลด์ซ่อมแล้ว / สำรอง)
+  notes?: string;
+  updatedAt: string;
+}
+
+export interface GoodsReceiptItem {
+  id: string;
+  inventoryItemId: string;
+  itemCode: string;
+  itemName: string;
+  category: RepairCategory;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface GoodsReceiptRecord {
+  id: string;
+  receiptNumber: string; // e.g. "REC-2026-0001"
+  receivedDate: string; // YYYY-MM-DD
+  supplierName: string;
+  poNumber?: string;
+  invoiceNumber?: string;
+  receivedBy: string;
+  department?: string;
+  items: GoodsReceiptItem[];
+  totalAmount: number;
+  totalQuantity: number;
+  status?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface GoodsRequisitionItem {
+  id: string;
+  inventoryItemId: string;
+  itemCode: string;
+  itemName: string;
+  category: RepairCategory;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface GoodsRequisitionRecord {
+  id: string;
+  requisitionNumber: string; // e.g. "REQ-2026-0001"
+  requisitionDate: string; // YYYY-MM-DD
+  requisitionType: 'repair_ticket' | 'vehicle_maintenance' | 'general_use';
+  ticketId?: string; // Connected Repair Ticket ID
+  ticketNumber?: string; // Connected Repair Ticket Number
+  vehicleId?: string; // Connected Vehicle ID
+  licensePlate?: string; // Connected Vehicle License Plate
+  department: string;
+  requestedBy: string; // Requester / Mechanic name
+  approvedBy?: string;
+  purpose: string;
+  items: GoodsRequisitionItem[];
+  totalAmount: number;
+  totalQuantity: number;
+  status: 'completed' | 'approved' | 'pending';
+  notes?: string;
+  createdAt: string;
+}
+
+export type PMPlanType = 
+  | 'pm1_minor'        // PM 1 (A-Service: 10,000 - 20,000 km) - เปลี่ยนถ่ายน้ำมันเครื่อง ไส้กรอง ตรวจเช็คระบบไฟ เบรก ลมยาง
+  | 'pm2_intermediate' // PM 2 (B-Service: 40,000 - 50,000 km) - น้ำมันเกียร์/เฟืองท้าย ช่วงล่าง สายพาน อัดจารบีลูกปืน
+  | 'pm3_major'        // PM 3 (C-Service: 80,000 - 100,000 km) - ล้างหม้อน้ำ ระบบเบรกใหญ่ วาล์ว/หัวฉีด ระบบส่งกำลังสมบูรณ์
+  | 'pm_annual'        // ตรวจสภาพประจำปี (Annual Inspection / พรบ. / กรมการขนส่งทางบก)
+  | 'pm_custom';       // แผนเฉพาะกิจ / ตรวจเช็คพิเศษ
+
+export type PMPlanStatus = 
+  | 'planned'     // ตามแผนงาน (Scheduled)
+  | 'in_progress' // กำลังดำเนินการซ่อมบำรุง
+  | 'completed'   // ดำเนินการเสร็จสมบูรณ์แล้ว
+  | 'overdue'     // เกินกำหนดเวลาแผนงาน
+  | 'cancelled';  // ยกเลิก / เลื่อนแผน
+
+export interface PMChecklistItem {
+  id: string;
+  item: string;
+  category: string;
+  isChecked: boolean;
+  notes?: string;
+}
+
+export interface PMMonthlyScheduleItem {
+  id: string;
+  pmPlanCode: string; // e.g. "PM-2026-03-001"
+  isoDocNumber: string; // e.g. "TNB-MT-PLN-001-Rev.02"
+  vehicleId: string;
+  licensePlate: string;
+  erpNo?: string;
+  province?: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleType: VehicleType;
+  carrierCompany?: string;
+  department?: string;
+  driverName?: string;
+  year: number; // e.g. 2026
+  month: number; // 1 to 12
+  plannedDate: string; // YYYY-MM-DD
+  actualDate?: string; // YYYY-MM-DD
+  pmType: PMPlanType;
+  pmTypeName?: string;
+  targetMileage: number;
+  lastServiceMileage?: number;
+  status: PMPlanStatus;
+  estimatedCost: number;
+  actualCost?: number;
+  assignedTechnician?: string;
+  ticketId?: string; // Connected Repair Ticket ID if created
+  ticketNumber?: string; // e.g. "REP-2026-0801"
+  checklists: PMChecklistItem[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PMAnnualMasterPlan {
+  year: number;
+  isoDocNumber: string;
+  title: string;
+  totalVehicles: number;
+  totalPlannedJobs: number;
+  completedJobs: number;
+  complianceRate: number;
+  schedules: PMMonthlyScheduleItem[];
+  generatedAt: string;
+}
+
+export type AppNavView = 'requester' | 'worker' | 'vehicles' | 'pm_plan' | 'part_list' | 'receiving' | 'requisition' | 'workflow';
+
