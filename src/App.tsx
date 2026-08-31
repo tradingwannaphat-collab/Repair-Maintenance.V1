@@ -43,6 +43,7 @@ import {
   DailyVehicleInspectionRecord
 } from "./types";
 import { TnbLogo } from "./components/TnbLogo";
+import { ShareModal } from "./components/ShareModal";
 import { normalizeLicensePlate } from "./utils/excelImportExport";
 import { 
   fetchServerFleetState, 
@@ -60,8 +61,38 @@ const PM_SCHEDULES_STORAGE_KEY = "tnb_fleet_clean_pm_schedules_v1";
 const DAILY_INSPECTIONS_STORAGE_KEY = "tnb_fleet_clean_daily_inspections_v1";
 
 export default function App() {
-  // Navigation View
-  const [currentView, setCurrentView] = useState<AppNavView>("requester");
+  // Navigation View with URL param support & default to Work Operations Hub
+  const [currentView, setCurrentView] = useState<AppNavView>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewParam = urlParams.get("view");
+      const validViews: AppNavView[] = [
+        "requester", "worker", "vehicles", "daily_inspection",
+        "pm_plan", "part_list", "receiving", "requisition", "workflow"
+      ];
+      if (viewParam === "operations") return "worker";
+      if (viewParam && validViews.includes(viewParam as AppNavView)) {
+        return viewParam as AppNavView;
+      }
+      const hash = window.location.hash.replace("#", "");
+      if (hash === "operations") return "worker";
+      if (hash && validViews.includes(hash as AppNavView)) {
+        return hash as AppNavView;
+      }
+    } catch (e) {}
+    return "worker"; // Default to Work Operations Hub (หน้านี้)
+  });
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Sync currentView with URL query parameter
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", currentView);
+      window.history.replaceState(null, "", url.toString());
+    } catch (e) {}
+  }, [currentView]);
 
   // Cloud Sync Status
   const [isCloudConnected, setIsCloudConnected] = useState(true);
@@ -1042,6 +1073,7 @@ export default function App() {
         onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}
         onOpenSearchModal={() => setIsSearchModalOpen(true)}
         onOpenExportBackupModal={() => setIsExportBackupModalOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -1067,6 +1099,7 @@ export default function App() {
             onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
             onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}
             onQuickStatusChange={handleQuickStatusChange}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
           />
         )}
 
@@ -1255,6 +1288,15 @@ export default function App() {
           receipts={receipts}
           requisitions={requisitions}
           pmSchedules={pmSchedules}
+        />
+      )}
+
+      {/* Direct Page & Real-Time Sync Share Modal */}
+      {isShareModalOpen && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          currentView={currentView}
         />
       )}
     </div>

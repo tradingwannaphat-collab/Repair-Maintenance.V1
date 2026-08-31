@@ -9,7 +9,8 @@ import {
   TrendingUp, 
   FileSpreadsheet,
   Layers,
-  Sparkles
+  Sparkles,
+  Share2
 } from "lucide-react";
 import { TicketTracker } from "./TicketTracker";
 import { ExecutiveDashboard } from "./ExecutiveDashboard";
@@ -22,6 +23,7 @@ interface WorkOperationsPortalProps {
   onOpenBackdatedModal?: () => void;
   onOpenImportTicketsModal?: () => void;
   onQuickStatusChange: (ticketId: string, newStatus: RepairStatus) => void;
+  onOpenShareModal?: () => void;
 }
 
 export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
@@ -30,7 +32,8 @@ export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
   onOpenNewModal,
   onOpenBackdatedModal,
   onOpenImportTicketsModal,
-  onQuickStatusChange
+  onQuickStatusChange,
+  onOpenShareModal
 }) => {
   const [subTab, setSubTab] = useState<"kanban" | "analytics">("kanban");
 
@@ -58,38 +61,53 @@ export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
           </p>
         </div>
 
-        {/* Sub-tab Navigation */}
-        <div className="flex items-center space-x-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
-          <button
-            type="button"
-            id="subtab-kanban-btn"
-            onClick={() => setSubTab("kanban")}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-              subTab === "kanban"
-                ? "bg-blue-600 text-white shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-700/60"
-            }`}
-          >
-            <ClipboardList className="w-3.5 h-3.5" />
-            <span>กระดานงานซ่อม (Kanban & ตาราง)</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-slate-900 text-white text-[10px]">
-              {pendingCount + inProgressCount}
-            </span>
-          </button>
+        {/* Sub-tab Navigation & Share Action */}
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenShareModal && (
+            <button
+              type="button"
+              id="btn-share-hub-direct"
+              onClick={onOpenShareModal}
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-white border border-blue-500/40 transition-colors shadow-xs"
+              title="คัดลอกลิงก์แชร์หน้านี้ให้ทุกคนเปิดดู"
+            >
+              <Share2 className="w-3.5 h-3.5 text-blue-400" />
+              <span>แชร์หน้านี้ให้ทุกคน</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            id="subtab-analytics-btn"
-            onClick={() => setSubTab("analytics")}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-              subTab === "analytics"
-                ? "bg-blue-600 text-white shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-700/60"
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>แดชบอร์ดสรุปผล & ผู้บริหาร</span>
-          </button>
+          <div className="flex items-center space-x-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <button
+              type="button"
+              id="subtab-kanban-btn"
+              onClick={() => setSubTab("kanban")}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                subTab === "kanban"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <ClipboardList className="w-3.5 h-3.5" />
+              <span>กระดานงานซ่อม (Kanban & ตาราง)</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-900 text-white text-[10px]">
+                {pendingCount + inProgressCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              id="subtab-analytics-btn"
+              onClick={() => setSubTab("analytics")}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                subTab === "analytics"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>แดชบอร์ดสรุปผล & ผู้บริหาร</span>
+            </button>
+          </div>
         </div>
       </div>
 

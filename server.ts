@@ -80,7 +80,7 @@ function initServerDB() {
             version: parsed.version || 108,
             lastUpdated: parsed.lastUpdated || new Date().toISOString(),
             vehicles: parsed.vehicles,
-            tickets: Array.isArray(parsed.tickets) ? parsed.tickets : INITIAL_TICKETS,
+            tickets: (Array.isArray(parsed.tickets) && parsed.tickets.length > 0) ? parsed.tickets : INITIAL_TICKETS,
             inventory: Array.isArray(parsed.inventory) ? parsed.inventory : INITIAL_INVENTORY_ITEMS,
             receipts: Array.isArray(parsed.receipts) ? parsed.receipts : INITIAL_GOODS_RECEIPTS,
             requisitions: Array.isArray(parsed.requisitions) ? parsed.requisitions : INITIAL_GOODS_REQUISITIONS,

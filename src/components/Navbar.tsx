@@ -24,7 +24,8 @@ import {
   FileSpreadsheet,
   Workflow,
   CalendarDays,
-  ClipboardCheck
+  ClipboardCheck,
+  Share2
 } from "lucide-react";
 import { AppNavView } from "../types";
 import { TnbLogo } from "./TnbLogo";
@@ -51,6 +52,7 @@ interface NavbarProps {
   onOpenImportTicketsModal?: () => void;
   onOpenSearchModal: () => void;
   onOpenExportBackupModal?: () => void;
+  onOpenShareModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -73,7 +75,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBackdatedTicketModal,
   onOpenImportTicketsModal,
   onOpenSearchModal,
-  onOpenExportBackupModal
+  onOpenExportBackupModal,
+  onOpenShareModal
 }) => {
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -384,6 +387,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
+
+            <button
+              id="btn-nav-share-app"
+              onClick={onOpenShareModal}
+              className="px-2 sm:px-2.5 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-white rounded-lg text-xs transition-colors flex items-center space-x-1.5 border border-blue-500/40 font-semibold"
+              title="แชร์ลิงก์หน้านี้ให้ทุกคนเห็น"
+            >
+              <Share2 className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden md:inline">แชร์ให้ทุกคน</span>
+            </button>
 
             {/* Quick Create Repair Button */}
             <button

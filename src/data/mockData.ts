@@ -1,7 +1,9 @@
 import { RepairTicket } from "../types";
+import { TNB_STANDARD_7_TICKETS } from "./tnbStandardTickets7";
 
-// Production Initial Data - Clean and Empty for real company operation
-export const INITIAL_TICKETS: RepairTicket[] = [];
+// Standard TNB Active & Completed Operations Tickets (7 ใบงานตรงตามระบบหน้างาน TNB)
+export const INITIAL_TICKETS: RepairTicket[] = TNB_STANDARD_7_TICKETS;
+
 
 // Sample Demo Data (Optional for testing and demonstrations)
 export const DEMO_SAMPLE_TICKETS: RepairTicket[] = [
