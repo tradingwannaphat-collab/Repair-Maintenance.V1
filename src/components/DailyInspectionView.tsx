@@ -838,6 +838,28 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
 
                     {/* 21 Items Checklist for this Selected Day */}
                     <div className="p-4 space-y-3">
+                      {/* Tire Tread Depth Alert Card if available */}
+                      {selectedDayRecord?.tireReport && (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                          selectedDayRecord.tireReport.overallTireStatus === "critical"
+                            ? "bg-rose-950/70 border-rose-500 text-rose-200"
+                            : selectedDayRecord.tireReport.overallTireStatus === "warning"
+                            ? "bg-amber-950/60 border-amber-500/70 text-amber-200"
+                            : "bg-emerald-950/60 border-emerald-500/50 text-emerald-200"
+                        }`}>
+                          <div className="flex items-center space-x-2">
+                            <Gauge className="w-4 h-4 shrink-0" />
+                            <div>
+                              <span className="font-bold">ผลตรวจดอกยาง: </span>
+                              <span>{selectedDayRecord.tireReport.alertMessage}</span>
+                            </div>
+                          </div>
+                          <div className="font-mono font-bold shrink-0">
+                            ต่ำสุด: {selectedDayRecord.tireReport.minTreadDepthMm} mm
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-xs text-slate-400 pb-1">
                         <span className="font-bold text-slate-200">
                           รายการตรวจสอบ 21 ตำแหน่งตามมาตรฐาน ISO-SHE-007

@@ -450,6 +450,29 @@ export interface DailyInspectionCheckResult {
   images?: string[];
 }
 
+export interface TirePositionMeasurement {
+  positionKey: string; // e.g. "FL", "FR", "RL1_OUT", "RL1_IN", "RR1_IN", "RR1_OUT"
+  positionNameTh: string; // e.g. "หน้าซ้าย (FL)", "หน้าขวา (FR)"
+  treadDepthMm: number; // e.g. 12.0, 3.2, 1.5
+  pressurePsi?: number; // e.g. 115
+  wearCondition: 'normal' | 'uneven_wear' | 'bulge' | 'cracks' | 'cut' | 'nail_puncture';
+  isAlert: boolean;
+  alertLevel: 'safe' | 'warning' | 'critical'; // < 2.0mm = critical, 2.0-3.5mm = warning, > 3.5mm = safe
+  notes?: string;
+}
+
+export interface TireInspectionReport {
+  measuredAt?: string;
+  minTreadDepthMm: number;
+  avgTreadDepthMm: number;
+  overallTireStatus: 'safe' | 'warning' | 'critical';
+  warningCount: number;
+  criticalCount: number;
+  alertMessage?: string;
+  measurements: TirePositionMeasurement[];
+  recommendationAction?: 'none' | 'rotate_tires' | 'replace_urgent' | 'adjust_alignment_pressure';
+}
+
 export interface DailyVehicleInspectionRecord {
   id: string;
   docNumber: string; // e.g. "DCI-2026-0830-001"
@@ -473,6 +496,7 @@ export interface DailyVehicleInspectionRecord {
   overallStatus: 'pass' | 'fail' | 'skip'; // pass: all ok, fail: has defect, skip: holiday/parked
   defectCount: number;
   results: DailyInspectionCheckResult[];
+  tireReport?: TireInspectionReport; // Specialized Tire Tread Depth & Wear Inspection
   notes?: string;
   ticketCreated?: boolean;
   ticketId?: string;
@@ -482,6 +506,58 @@ export interface DailyVehicleInspectionRecord {
   signatureInspector?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ==========================================
+// MAINTENANCE INTERVAL MATRIX & MILEAGE ALERTS (แผนบำรุงรักษาตามระยะทางและแจ้งเตือน)
+// ==========================================
+
+export type ServiceExecutionType = 'in_house' | 'dealer_center'; // ทำเองในอู่ TNB หรือ ส่งเข้าศูนย์บริการ
+
+export interface MaintenanceIntervalCheckItem {
+  id: string;
+  category: RepairCategory;
+  categoryNameTh: string;
+  itemTitle: string;
+  itemDescription: string;
+  executionType: ServiceExecutionType; // 'in_house' | 'dealer_center'
+  executionTypeLabelTh: string; // "ทำเองในอู่ TNB" | "ส่งเข้าศูนย์บริการ"
+  standardPartsUsed?: string[]; // รายการอะไหล่/ของเหลวที่ใช้
+  estimatedLaborMinutes: number;
+  estimatedCost: number;
+  isCrucialSafetyItem: boolean;
+}
+
+export interface MaintenanceIntervalPlan {
+  intervalKm: number; // e.g. 10000, 20000, 40000, 80000, 100000, 150000, 200000
+  intervalNameTh: string;
+  intervalNameEn: string;
+  badgeColor: string;
+  targetMonths: number;
+  description: string;
+  totalItemsCount: number;
+  inHouseItemsCount: number;
+  dealerItemsCount: number;
+  estimatedTotalCost: number;
+  items: MaintenanceIntervalCheckItem[];
+}
+
+export interface MileageAlertEvaluation {
+  vehicleId: string;
+  licensePlate: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleType: VehicleType;
+  currentMileage: number;
+  thresholdKm: number;
+  closestIntervalKm: number;
+  diffKm: number;
+  alertStatus: 'overdue' | 'due_soon' | 'normal';
+  alertTitle: string;
+  alertDescription: string;
+  matchedPlan: MaintenanceIntervalPlan;
+  inHouseItemsCount: number;
+  dealerItemsCount: number;
 }
 
 export interface MonthlyInspectionMatrixVehicle {
@@ -503,14 +579,58 @@ export interface MonthlyInspectionMatrixVehicle {
   totalSkipDays: number;
 }
 
+export interface TireReplacementRecord {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleType?: VehicleType;
+  positionKey: string; // e.g. "FL", "FR", "A2_L_OUT", "A2_L_IN", "A2_R_IN", "A2_R_OUT", "A3_L_OUT", "A3_L_IN", "A3_R_IN", "A3_R_OUT", "SPARE"
+  positionNameTh: string;
+  replacedDate: string; // YYYY-MM-DD
+  replacedMileage: number;
+  tireBrand: string; // e.g. "Bridgestone", "Michelin", "Deestone", "Otani", "Maxxis", "Goodyear"
+  tireModel?: string; // e.g. "R156", "X Multi D", "SV402", "OH-301"
+  tireSize?: string; // e.g. "11R22.5", "295/80R22.5", "215/75R17.5", "195R14C"
+  tireSerial?: string; // e.g. "SN-88492041"
+  dotCode?: string; // e.g. "DOT 3424" (Week 34 Year 2024)
+  tireType: 'new' | 'retread' | 'rotate' | 'used'; // ยางใหม่ / ยางหล่อดอก / สลับยาง / ยางมือสองสภาพดี
+  initialTreadDepthMm: number; // e.g. 14.0 mm
+  currentTreadDepthMm: number; // e.g. 9.5 mm
+  costPerTire: number; // e.g. 8500
+  supplierOrShop?: string; // e.g. "บริดจสโตน บอย ยางยนต์", "ศูนย์บริการ TNB อู่กลาง"
+  technicianName?: string;
+  reason?: 'worn_out' | 'burst_or_cut' | 'puncture_damage' | 'scheduled_rotation' | 'annual_renewal' | 'uneven_wear' | 'other';
+  reasonLabelTh?: string;
+  status: 'active' | 'scrapped' | 'spare_stock';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface VehicleTireProfile {
+  vehicleId: string;
+  licensePlate: string;
+  measurements: TirePositionMeasurement[];
+  replacements: TireReplacementRecord[];
+  lastInspectionDate?: string;
+  overallTireStatus: 'safe' | 'warning' | 'critical';
+  minTreadDepthMm: number;
+  avgTreadDepthMm: number;
+}
+
 export type AppNavView = 
   | 'requester' 
   | 'worker' 
   | 'vehicles' 
   | 'daily_inspection' 
   | 'pm_plan' 
+  | 'maintenance_intervals'
+  | 'tire_management'
+  | 'repair_history'
   | 'part_list' 
   | 'receiving' 
   | 'requisition' 
   | 'workflow';
+
 

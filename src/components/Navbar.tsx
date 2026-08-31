@@ -25,7 +25,11 @@ import {
   Workflow,
   CalendarDays,
   ClipboardCheck,
-  Share2
+  Share2,
+  History,
+  Gauge,
+  CircleDot,
+  SlidersHorizontal
 } from "lucide-react";
 import { AppNavView } from "../types";
 import { TnbLogo } from "./TnbLogo";
@@ -132,6 +136,30 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: CalendarDays,
       badge: pmCount > 0 ? `${pmCount}` : "ISO",
       badgeColor: "bg-emerald-400 text-slate-950 font-bold"
+    },
+    {
+      id: "maintenance_intervals" as AppNavView,
+      label: "แผนบำรุงรักษาตามระยะ & เลขไมล์",
+      shortLabel: "ซ่อมตามระยะ",
+      icon: Gauge,
+      badge: "DIY/ศูนย์",
+      badgeColor: "bg-amber-400 text-slate-950 font-bold"
+    },
+    {
+      id: "tire_management" as AppNavView,
+      label: "ระบบตรวจสอบ & เปลี่ยนยางรายคัน",
+      shortLabel: "ตรวจ & เปลี่ยนยาง",
+      icon: CircleDot,
+      badge: "ยาง/ดอกยาง",
+      badgeColor: "bg-rose-400 text-slate-950 font-bold"
+    },
+    {
+      id: "repair_history" as AppNavView,
+      label: "ประวัติการซ่อมและค่าใช้จ่ายรายคัน",
+      shortLabel: "ประวัติซ่อม & ค่าใช้จ่าย",
+      icon: History,
+      badge: "สมุดประวัติ",
+      badgeColor: "bg-indigo-400 text-slate-950 font-bold"
     },
     {
       id: "part_list" as AppNavView,

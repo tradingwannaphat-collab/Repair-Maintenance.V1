@@ -27,13 +27,20 @@ import {
   InspectionCheckStatus, 
   VehicleRecord, 
   Priority,
-  RepairCategory
+  RepairCategory,
+  TirePositionMeasurement,
+  TireInspectionReport
 } from "../types";
 import { 
   DAILY_INSPECTION_ITEMS_TEMPLATE, 
   INSPECTION_CATEGORIES_CONFIG, 
   createDefaultInspectionResults 
 } from "../data/dailyInspectionData";
+import { 
+  generateDefaultTireMeasurements, 
+  evaluateTireCondition 
+} from "../data/tireInspectionConfig";
+import { TireInspectionSection } from "./TireInspectionSection";
 
 interface DailyInspectionModalProps {
   isOpen: boolean;
@@ -70,6 +77,16 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
   const [locationName, setLocationName] = useState<string>("ศูนย์กระจายสินค้า TNB ลาดกระบัง");
   const [notes, setNotes] = useState<string>("");
   const [results, setResults] = useState<DailyInspectionCheckResult[]>(() => createDefaultInspectionResults());
+  
+  // Tire Tread Depth state
+  const [tireMeasurements, setTireMeasurements] = useState<TirePositionMeasurement[]>(() => 
+    generateDefaultTireMeasurements("tractor_10w", 8.5)
+  );
+  const [tireReport, setTireReport] = useState<TireInspectionReport>(() => 
+    evaluateTireCondition(generateDefaultTireMeasurements("tractor_10w", 8.5))
+  );
+
+  const [activeModalTab, setActiveModalTab] = useState<"checklist_21" | "tire_depth">("checklist_21");
   const [autoCreateTicket, setAutoCreateTicket] = useState<boolean>(true);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("all");
 
@@ -91,6 +108,14 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
       setLocationName(initialRecord.locationName || "ศูนย์กระจายสินค้า TNB ลาดกระบัง");
       setNotes(initialRecord.notes || "");
       setResults(initialRecord.results || createDefaultInspectionResults());
+      if (initialRecord.tireReport) {
+        setTireReport(initialRecord.tireReport);
+        setTireMeasurements(initialRecord.tireReport.measurements);
+      } else if (v) {
+        const defaultTires = generateDefaultTireMeasurements(v.vehicleType, 8.5);
+        setTireMeasurements(defaultTires);
+        setTireReport(evaluateTireCondition(defaultTires));
+      }
     } else {
       let targetV = vehicles[0];
       if (selectedVehicleId) {
@@ -102,6 +127,9 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
         setCurrentMileage(String(targetV.currentMileage || ""));
         setDriverName(targetV.driverName || "");
         setDriverPhone(targetV.driverPhone || "");
+        const defaultTires = generateDefaultTireMeasurements(targetV.vehicleType, 8.5);
+        setTireMeasurements(defaultTires);
+        setTireReport(evaluateTireCondition(defaultTires));
       }
       setDate(initialDate || new Date().toISOString().split("T")[0]);
       setTime(new Date().toTimeString().slice(0, 5));
@@ -118,6 +146,9 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
       setCurrentMileage(String(v.currentMileage || ""));
       if (v.driverName) setDriverName(v.driverName);
       if (v.driverPhone) setDriverPhone(v.driverPhone);
+      const defaultTires = generateDefaultTireMeasurements(v.vehicleType, 8.5);
+      setTireMeasurements(defaultTires);
+      setTireReport(evaluateTireCondition(defaultTires));
     }
   };
 
@@ -226,8 +257,9 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
   const passCount = results.filter((r) => r.status === "pass").length;
   const failCount = results.filter((r) => r.status === "fail").length;
   const skipCount = results.filter((r) => r.status === "skip").length;
-  const defectCount = failCount;
-  const overallStatus = failCount > 0 ? "fail" : skipCount === results.length ? "skip" : "pass";
+  const isTireCritical = tireReport.overallTireStatus === "critical";
+  const defectCount = failCount + (isTireCritical ? 1 : 0);
+  const overallStatus = defectCount > 0 ? "fail" : skipCount === results.length ? "skip" : "pass";
 
   // Filter items by category
   const filteredResults = results.filter((r) => {
@@ -270,6 +302,7 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
       overallStatus,
       defectCount,
       results,
+      tireReport,
       notes,
       locationName,
       ticketCreated: initialRecord?.ticketCreated || false,
@@ -463,61 +496,107 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Rapid Quick Actions & Score bar */}
-          <div className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center space-x-2 text-xs">
-              <span className="font-bold text-slate-300">ผลสรุป 21 รายการ:</span>
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>ปกติ (/) : {passCount}</span>
-              </span>
-              <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg font-bold ${failCount > 0 ? "bg-rose-950 text-rose-300 border border-rose-500 animate-pulse" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>ผิดปกติ (x) : {failCount}</span>
-              </span>
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-500/30">
-                <span>งดตรวจ (O) : {skipCount}</span>
-              </span>
-            </div>
-
-            {/* Quick Action Buttons */}
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={handleSetAllPass}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center space-x-1.5 transition-all active:scale-95"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>✅ ติ๊กปกติทั้งหมด (Pass All)</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSetAllSkip}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg transition-all"
-                title="ตั้งค่าทุกข้อเป็นงดเว้นการตรวจ (วันหยุด/จอดซ่อม)"
-              >
-                <span>งดตรวจทั้งหมด (O)</span>
-              </button>
-            </div>
+          {/* Navigation Tabs between 21 Items and Tire Tread Depth */}
+          <div className="flex border-b border-slate-700 bg-slate-950/60 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setActiveModalTab("checklist_21")}
+              className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-2 ${
+                activeModalTab === "checklist_21"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>1. ตรวจเช็คสภาพ 21 รายการ ({passCount}/{results.length})</span>
+              {failCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {failCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModalTab("tire_depth")}
+              className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-2 ${
+                activeModalTab === "tire_depth"
+                  ? "bg-amber-600 text-white shadow-md shadow-amber-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Gauge className="w-4 h-4" />
+              <span>2. ตรวจวัดความลึกดอกยาง & สภาพยาง ({tireReport.minTreadDepthMm} mm)</span>
+              {tireReport.overallTireStatus === "critical" && (
+                <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold animate-pulse">
+                  วิกฤต!
+                </span>
+              )}
+              {tireReport.overallTireStatus === "warning" && (
+                <span className="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  เฝ้าระวัง
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Section 3: 21 Inspection Items List */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center space-x-1.5">
-                <FileText className="w-4 h-4 text-blue-400" />
-                <span>2. รายการตรวจเช็คสภาพรถบรรทุก 21 ข้อ</span>
+          {/* TAB 1: 21 ITEMS CHECKLIST */}
+          {activeModalTab === "checklist_21" && (
+            <>
+              {/* Section 2: Rapid Quick Actions & Score bar */}
+              <div className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center space-x-2 text-xs">
+                  <span className="font-bold text-slate-300">ผลสรุป 21 รายการ:</span>
+                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>ปกติ (/) : {passCount}</span>
+                  </span>
+                  <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg font-bold ${failCount > 0 ? "bg-rose-950 text-rose-300 border border-rose-500 animate-pulse" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>ผิดปกติ (x) : {failCount}</span>
+                  </span>
+                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                    <span>งดตรวจ (O) : {skipCount}</span>
+                  </span>
+                </div>
+
+                {/* Quick Action Buttons */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleSetAllPass}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center space-x-1.5 transition-all active:scale-95"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>✅ ติ๊กปกติทั้งหมด (Pass All)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSetAllSkip}
+                    className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg transition-all"
+                    title="ตั้งค่าทุกข้อเป็นงดเว้นการตรวจ (วันหยุด/จอดซ่อม)"
+                  >
+                    <span>งดตรวจทั้งหมด (O)</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Category Filter Tabs */}
-              <div className="flex items-center space-x-1 overflow-x-auto text-[11px] pb-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveCategoryFilter("all")}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${activeCategoryFilter === "all" ? "bg-blue-600 text-white font-bold" : "bg-slate-800 text-slate-400 hover:text-white"}`}
-                >
-                  ทั้งหมด ({results.length})
-                </button>
+              {/* Section 3: 21 Inspection Items List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <FileText className="w-4 h-4 text-blue-400" />
+                    <span>2. รายการตรวจเช็คสภาพรถบรรทุก 21 ข้อ</span>
+                  </div>
+
+                  {/* Category Filter Tabs */}
+                  <div className="flex items-center space-x-1 overflow-x-auto text-[11px] pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveCategoryFilter("all")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${activeCategoryFilter === "all" ? "bg-blue-600 text-white font-bold" : "bg-slate-800 text-slate-400 hover:text-white"}`}
+                    >
+                      ทั้งหมด ({results.length})
+                    </button>
                 {failCount > 0 && (
                   <button
                     type="button"
@@ -701,6 +780,20 @@ export const DailyInspectionModal: React.FC<DailyInspectionModalProps> = ({
               })}
             </div>
           </div>
+            </>
+          )}
+
+          {/* TAB 2: TIRE TREAD DEPTH & WEAR INSPECTION */}
+          {activeModalTab === "tire_depth" && selectedVehicle && (
+            <TireInspectionSection
+              vehicleType={selectedVehicle.vehicleType}
+              measurements={tireMeasurements}
+              onChange={(updated, report) => {
+                setTireMeasurements(updated);
+                setTireReport(report);
+              }}
+            />
+          )}
 
           {/* Section 4: Notes & Auto-create Repair Ticket */}
           <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-3">

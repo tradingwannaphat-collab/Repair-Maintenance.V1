@@ -15,6 +15,9 @@ import { DataBackupExportModal } from "./components/DataBackupExportModal";
 import { WorkflowGuideView } from "./components/WorkflowGuideView";
 import { PMPlanView } from "./components/PMPlanView";
 import { DailyInspectionView } from "./components/DailyInspectionView";
+import { MaintenanceIntervalMatrixView } from "./components/MaintenanceIntervalMatrixView";
+import { VehicleRepairHistoryView } from "./components/VehicleRepairHistoryView";
+import { TireManagementView } from "./components/TireManagementView";
 import { INITIAL_TICKETS, DEMO_SAMPLE_TICKETS } from "./data/mockData";
 import { 
   INITIAL_VEHICLES, 
@@ -1144,6 +1147,40 @@ export default function App() {
             onAutoGenerateAnnualPlan={handleAutoGenerateAnnualPlan}
             onReloadSamplePlan={handleResetToSamplePMSchedules}
             onImportSchedules={handleBulkImportPMSchedules}
+          />
+        )}
+
+        {/* Module 3.6: แผนบำรุงรักษาตามระยะทาง & แจ้งเตือนเลขไมล์ (Maintenance Interval Matrix: DIY vs Center) */}
+        {currentView === "maintenance_intervals" && (
+          <MaintenanceIntervalMatrixView
+            vehicles={vehicles}
+            tickets={tickets}
+            onRequestRepairForVehicle={handleRequestRepairForVehicle}
+            onOpenVehicleRepairHistory={(plate) => {
+              setCurrentView("repair_history");
+            }}
+          />
+        )}
+
+        {/* Module 3.65: ระบบตรวจสอบ & เปลี่ยนยางรายคัน (Tire Management & Tread Depth Tracking) */}
+        {currentView === "tire_management" && (
+          <TireManagementView
+            vehicles={vehicles}
+            tickets={tickets}
+            onRequestRepairForVehicle={handleRequestRepairForVehicle}
+            onOpenVehicleRepairHistory={(plate) => {
+              setCurrentView("repair_history");
+            }}
+          />
+        )}
+
+        {/* Module 3.7: สรุปประวัติการซ่อมและค่าใช้จ่ายรายคัน (Vehicle Repair History & Cost Ledger) */}
+        {currentView === "repair_history" && (
+          <VehicleRepairHistoryView
+            vehicles={vehicles}
+            tickets={tickets}
+            onSelectTicket={handleSelectTicket}
+            onOpenNewTicketForVehicle={handleRequestRepairForVehicle}
           />
         )}
 
