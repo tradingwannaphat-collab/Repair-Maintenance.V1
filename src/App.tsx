@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Navbar } from "./components/Navbar";
 import { RequesterPortal } from "./components/RequesterPortal";
 import { WorkOperationsPortal } from "./components/WorkOperationsPortal";
@@ -27,6 +27,7 @@ import {
   DEMO_GOODS_RECEIPTS,
   DEMO_GOODS_REQUISITIONS
 } from "./data/initialFleetData";
+import { getFleet108Vehicles } from "./data/masterFleet108";
 import { INITIAL_PM_SCHEDULES_2026, generateAnnualPMPlanForFleet, MONTH_NAMES_TH } from "./data/pmPlanData";
 import { INITIAL_DAILY_INSPECTIONS } from "./data/dailyInspectionData";
 import { 
@@ -43,9 +44,15 @@ import {
 } from "./types";
 import { TnbLogo } from "./components/TnbLogo";
 import { normalizeLicensePlate } from "./utils/excelImportExport";
+import { 
+  fetchServerFleetState, 
+  pushServerFleetSync, 
+  resetServerFleetState,
+  getLastKnownServerUpdate 
+} from "./utils/fleetSyncService";
 
 const TICKETS_STORAGE_KEY = "tnb_fleet_clean_tickets_v5";
-const VEHICLES_STORAGE_KEY = "tnb_fleet_clean_vehicles_v8";
+const VEHICLES_STORAGE_KEY = "tnb_fleet_clean_vehicles_v108";
 const INVENTORY_STORAGE_KEY = "tnb_fleet_clean_inventory_v5";
 const RECEIPTS_STORAGE_KEY = "tnb_fleet_clean_receipts_v5";
 const REQUISITIONS_STORAGE_KEY = "tnb_fleet_clean_requisitions_v5";
@@ -55,6 +62,13 @@ const DAILY_INSPECTIONS_STORAGE_KEY = "tnb_fleet_clean_daily_inspections_v1";
 export default function App() {
   // Navigation View
   const [currentView, setCurrentView] = useState<AppNavView>("requester");
+
+  // Cloud Sync Status
+  const [isCloudConnected, setIsCloudConnected] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string | null>(null);
+  const isInitialMount = useRef(true);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Tickets State
   const [tickets, setTickets] = useState<RepairTicket[]>(() => {
@@ -154,7 +168,123 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isExportBackupModalOpen, setIsExportBackupModalOpen] = useState(false);
 
-  // Sync to local storage
+  // Initial Central Server Hydration & Background Polling to keep all devices in sync
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCentralData = async () => {
+      setIsSyncing(true);
+      try {
+        const serverState = await fetchServerFleetState();
+        if (serverState && serverState.success && serverState.data) {
+          const { data } = serverState;
+          if (Array.isArray(data.vehicles) && data.vehicles.length > 0) setVehicles(data.vehicles);
+          if (Array.isArray(data.tickets)) setTickets(data.tickets);
+          if (Array.isArray(data.inventory)) setInventory(data.inventory);
+          if (Array.isArray(data.receipts)) setReceipts(data.receipts);
+          if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
+          if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
+          if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          setLastSyncedTime(data.lastUpdated || new Date().toISOString());
+          setIsCloudConnected(true);
+        }
+      } catch (e) {
+        console.warn("Could not fetch central fleet state on mount:", e);
+        setIsCloudConnected(false);
+      } finally {
+        if (isMounted) setIsSyncing(false);
+        isInitialMount.current = false;
+      }
+    };
+
+    loadCentralData();
+
+    // Background polling every 8 seconds to synchronize changes across browsers/users
+    const pollInterval = setInterval(async () => {
+      try {
+        const serverState = await fetchServerFleetState();
+        if (serverState && serverState.success && serverState.data) {
+          const { data } = serverState;
+          const knownUpdate = getLastKnownServerUpdate();
+          if (data.lastUpdated && data.lastUpdated !== knownUpdate) {
+            if (Array.isArray(data.vehicles) && data.vehicles.length > 0) setVehicles(data.vehicles);
+            if (Array.isArray(data.tickets)) setTickets(data.tickets);
+            if (Array.isArray(data.inventory)) setInventory(data.inventory);
+            if (Array.isArray(data.receipts)) setReceipts(data.receipts);
+            if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
+            if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
+            if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+            setLastSyncedTime(data.lastUpdated);
+          }
+          setIsCloudConnected(true);
+        }
+      } catch (e) {
+        setIsCloudConnected(false);
+      }
+    }, 8000);
+
+    // Sync on window focus
+    const handleFocus = async () => {
+      try {
+        const serverState = await fetchServerFleetState();
+        if (serverState && serverState.success && serverState.data) {
+          const { data } = serverState;
+          if (Array.isArray(data.vehicles) && data.vehicles.length > 0) setVehicles(data.vehicles);
+          if (Array.isArray(data.tickets)) setTickets(data.tickets);
+          if (Array.isArray(data.inventory)) setInventory(data.inventory);
+          if (Array.isArray(data.receipts)) setReceipts(data.receipts);
+          if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
+          if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
+          if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          setLastSyncedTime(data.lastUpdated || new Date().toISOString());
+          setIsCloudConnected(true);
+        }
+      } catch (e) {
+        setIsCloudConnected(false);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
+  // Debounced auto-push to central server whenever any module data changes
+  useEffect(() => {
+    if (isInitialMount.current) return;
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    syncTimeoutRef.current = setTimeout(async () => {
+      setIsSyncing(true);
+      const ok = await pushServerFleetSync({
+        vehicles,
+        tickets,
+        inventory,
+        receipts,
+        requisitions,
+        pmSchedules,
+        dailyInspections
+      });
+      setIsSyncing(false);
+      if (ok) {
+        setIsCloudConnected(true);
+        setLastSyncedTime(new Date().toISOString());
+      }
+    }, 600);
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections]);
+
+  // Sync to local storage for offline resiliency
   useEffect(() => {
     try {
       localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
@@ -210,6 +340,41 @@ export default function App() {
       console.error("Error saving daily inspections localStorage:", e);
     }
   }, [dailyInspections]);
+
+  // Manual Force Synchronize Handler
+  const handleManualSync = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      // First push local state to ensure nothing is lost
+      await pushServerFleetSync({
+        vehicles,
+        tickets,
+        inventory,
+        receipts,
+        requisitions,
+        pmSchedules,
+        dailyInspections
+      });
+      // Fetch latest state from central server
+      const res = await fetchServerFleetState();
+      if (res && res.success && res.data) {
+        const { data } = res;
+        if (Array.isArray(data.vehicles) && data.vehicles.length > 0) setVehicles(data.vehicles);
+        if (Array.isArray(data.tickets)) setTickets(data.tickets);
+        if (Array.isArray(data.inventory)) setInventory(data.inventory);
+        if (Array.isArray(data.receipts)) setReceipts(data.receipts);
+        if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
+        if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
+        if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+        setLastSyncedTime(data.lastUpdated || new Date().toISOString());
+        setIsCloudConnected(true);
+      }
+    } catch (e) {
+      console.error("Manual sync error:", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections]);
 
   // Daily Inspection Handlers
   const handleAddDailyInspection = (record: DailyVehicleInspectionRecord, autoCreateTicket = false) => {
@@ -556,22 +721,32 @@ export default function App() {
     handleOpenNewTicketModal(isBackdated, vehicle);
   };
 
-  const handleRestoreAllVehicles = () => {
-    setVehicles(FULL_TNB_FLEET_DATA);
+  const handleRestoreAllVehicles = async () => {
+    const fleet108 = getFleet108Vehicles();
+    setVehicles(fleet108);
     try {
-      localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(FULL_TNB_FLEET_DATA));
+      localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(fleet108));
     } catch (e) {
       console.error("Error saving vehicles to localStorage:", e);
     }
+    // Push immediately to server
+    setIsSyncing(true);
+    await pushServerFleetSync({ vehicles: fleet108 });
+    setIsSyncing(false);
+    setLastSyncedTime(new Date().toISOString());
   };
 
-  const handleClearAllVehicles = () => {
+  const handleClearAllVehicles = async () => {
     setVehicles([]);
     try {
       localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify([]));
     } catch (e) {
       console.error("Error clearing vehicles in localStorage:", e);
     }
+    // Push immediately to server
+    setIsSyncing(true);
+    await pushServerFleetSync({ vehicles: [] });
+    setIsSyncing(false);
   };
 
   // Bulk Vehicle Import Handler
@@ -758,7 +933,7 @@ export default function App() {
   };
 
   // Clear all data for production real operation (ล้างระบบทั้งหมดเป็น 0 เพื่อเริ่มใช้งานจริง)
-  const handleClearAllData = () => {
+  const handleClearAllData = async () => {
     if (window.confirm("⚠️ ยืนยันการล้างข้อมูลทั้งระบบ?\n\nระบบจะลบข้อมูลทั้งหมด ได้แก่:\n- ประวัติและใบแจ้งซ่อมทั้งหมด (0 รายการ)\n- ประวัติการรับของเข้าคลัง (0 รายการ)\n- ประวัติการเบิกของ/อะไหล่ (0 รายการ)\n- แผน PM รถยนต์ (0 รายการ)\n- ผลการตรวจสภาพรถประจำวัน (0 รายการ)\n- ข้อมูลสารระบบทะเบียนรถ (0 คัน)\n- รายการพัสดุในคลังสินค้า (0 รายการ)\n\nเพื่อให้ระบบสะอาด 100% พร้อมสำหรับการเริ่มบันทึกใช้งานจริงของบริษัท TNB Logistics")) {
       setTickets([]);
       setVehicles([]);
@@ -775,11 +950,24 @@ export default function App() {
       localStorage.removeItem(PM_SCHEDULES_STORAGE_KEY);
       localStorage.removeItem(DAILY_INSPECTIONS_STORAGE_KEY);
       localStorage.clear();
+
+      setIsSyncing(true);
+      await pushServerFleetSync({
+        tickets: [],
+        vehicles: [],
+        inventory: [],
+        receipts: [],
+        requisitions: [],
+        pmSchedules: [],
+        dailyInspections: []
+      });
+      setIsSyncing(false);
+      setLastSyncedTime(new Date().toISOString());
     }
   };
 
   // Load demo sample dataset for testing
-  const handleLoadDemoData = () => {
+  const handleLoadDemoData = async () => {
     if (window.confirm("ต้องการโหลดชุดข้อมูลตัวอย่าง (Demo Data: 8 คัน, แผน PM, ผลตรวจประจำวัน, รายการอะไหล่, ใบแจ้งซ่อม, ใบรับ และใบเบิก) สำหรับการทดลองใช้งานและดูตัวอย่างรายงานสรุปหรือไม่?")) {
       setTickets(DEMO_SAMPLE_TICKETS);
       setVehicles(DEMO_TNB_VEHICLES);
@@ -795,6 +983,19 @@ export default function App() {
       localStorage.setItem(REQUISITIONS_STORAGE_KEY, JSON.stringify(DEMO_GOODS_REQUISITIONS));
       localStorage.setItem(PM_SCHEDULES_STORAGE_KEY, JSON.stringify(INITIAL_PM_SCHEDULES_2026));
       localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(INITIAL_DAILY_INSPECTIONS));
+
+      setIsSyncing(true);
+      await pushServerFleetSync({
+        tickets: DEMO_SAMPLE_TICKETS,
+        vehicles: DEMO_TNB_VEHICLES,
+        inventory: DEMO_INVENTORY_ITEMS,
+        receipts: DEMO_GOODS_RECEIPTS,
+        requisitions: DEMO_GOODS_REQUISITIONS,
+        pmSchedules: INITIAL_PM_SCHEDULES_2026,
+        dailyInspections: INITIAL_DAILY_INSPECTIONS
+      });
+      setIsSyncing(false);
+      setLastSyncedTime(new Date().toISOString());
     }
   };
 
@@ -830,6 +1031,10 @@ export default function App() {
         inventoryCount={inventory.length}
         pmCount={pmSchedules.length}
         dailyInspectionCount={dailyInspections.length}
+        isCloudConnected={isCloudConnected}
+        isSyncing={isSyncing}
+        lastSyncedTime={lastSyncedTime}
+        onManualSync={handleManualSync}
         onClearAllData={handleClearAllData}
         onLoadDemoData={handleLoadDemoData}
         onOpenNewModal={() => handleOpenNewTicketModal(false)}

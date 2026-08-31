@@ -598,15 +598,15 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
               <button
                 id="btn-restore-all-vehicles"
                 onClick={() => {
-                  if (window.confirm("คุณต้องการดึงข้อมูลรถจริงทั้งหมดของ TNB (99 คัน: หัวลาก 10 ล้อ, รถบรรทุก 6 ล้อ, หางพ่วง, รถโมบายเซอร์วิส, โฟล์คลิฟต์) พร้อมข้อมูล 27 รายการ ครบถ้วนกลับเข้าสู่ระบบหรือไม่?")) {
+                  if (window.confirm("คุณต้องการดึงข้อมูลรถจริงทั้งหมดของ TNB (108 คัน: หัวลาก 10 ล้อ, รถบรรทุก 6 ล้อ, หางพ่วง, รถโมบายเซอร์วิส, โฟล์คลิฟต์) พร้อมข้อมูล 27 รายการ ครบถ้วนกลับเข้าสู่ระบบหรือไม่?")) {
                     onRestoreAllVehicles();
                   }
                 }}
                 className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition-all flex items-center space-x-1.5"
-                title="ดึงข้อมูลสารระบบรถจริง TNB ทั้งหมด 99 คัน (หัวลาก, 6 ล้อ, หางพ่วง, โมบายเซอร์วิส, โฟล์คลิฟต์)"
+                title="ดึงข้อมูลสารระบบรถจริง TNB ทั้งหมด 108 คัน (หัวลาก, 6 ล้อ, หางพ่วง, โมบายเซอร์วิส, โฟล์คลิฟต์)"
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
-                <span>ดึงข้อมูลรถทั้งหมด (99 คัน)</span>
+                <span>ดึงข้อมูลรถทั้งหมด (108 คัน)</span>
               </button>
             )}
 

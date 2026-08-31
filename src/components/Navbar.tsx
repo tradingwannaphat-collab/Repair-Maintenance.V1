@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { AppNavView } from "../types";
 import { TnbLogo } from "./TnbLogo";
+import { Cloud, RefreshCw, CheckCircle } from "lucide-react";
 
 interface NavbarProps {
   currentView: AppNavView;
@@ -39,6 +40,10 @@ interface NavbarProps {
   inventoryCount?: number;
   pmCount?: number;
   dailyInspectionCount?: number;
+  isCloudConnected?: boolean;
+  isSyncing?: boolean;
+  lastSyncedTime?: string | null;
+  onManualSync?: () => void;
   onClearAllData: () => void;
   onLoadDemoData: () => void;
   onOpenNewModal: () => void;
@@ -58,6 +63,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   inventoryCount = 0,
   pmCount = 0,
   dailyInspectionCount = 0,
+  isCloudConnected = true,
+  isSyncing = false,
+  lastSyncedTime = null,
+  onManualSync,
   onClearAllData,
   onLoadDemoData,
   onOpenNewModal,
@@ -209,6 +218,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Actions: Quick Search, Data Management & New Repair Button */}
           <div className="flex items-center space-x-2 sm:space-x-2.5">
+            {/* Cloud Real-Time Sync Status Badge & Button */}
+            <button
+              id="btn-cloud-sync-status"
+              onClick={onManualSync}
+              title={`สถานะการเชื่อมต่อฐานข้อมูลกลาง: ${isCloudConnected ? "ออนไลน์ ซิงค์ตรงกันทุกเครื่อง" : "ออฟไลน์"}${lastSyncedTime ? ` (อัปเดตล่าสุด: ${new Date(lastSyncedTime).toLocaleTimeString("th-TH")})` : ""}`}
+              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 border ${
+                isSyncing
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
+                  : isCloudConnected
+                  ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/40"
+                  : "bg-rose-950/40 text-rose-300 border-rose-500/30 hover:bg-rose-900/40"
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-amber-400" : isCloudConnected ? "text-emerald-400" : "text-rose-400"}`} />
+              <span className="hidden xl:inline text-[11px]">
+                {isSyncing ? "กำลังซิงค์..." : isCloudConnected ? "ซิงค์ตรงกันทุกเครื่อง" : "ออฟไลน์"}
+              </span>
+            </button>
+
             <button
               id="btn-nav-quick-search"
               onClick={onOpenSearchModal}
@@ -251,6 +279,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
 
                   <div className="p-1 space-y-1">
+                    {onManualSync && (
+                      <button
+                        onClick={() => {
+                          setIsDataMenuOpen(false);
+                          onManualSync();
+                        }}
+                        id="btn-force-cloud-sync-menu"
+                        className="w-full text-left px-3 py-2 text-xs text-cyan-300 hover:text-white hover:bg-cyan-600/30 rounded-lg flex items-center space-x-2.5 transition-colors font-medium border border-cyan-500/20 bg-cyan-950/20"
+                      >
+                        <RefreshCw className={`w-4 h-4 text-cyan-400 shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+                        <div>
+                          <div className="font-bold text-cyan-300">ซิงค์ฐานข้อมูลกลาง (Cloud Real-Time Sync)</div>
+                          <div className="text-[10px] text-cyan-100/70">
+                            {lastSyncedTime 
+                              ? `ซิงค์ล่าสุดเมื่อ ${new Date(lastSyncedTime).toLocaleTimeString("th-TH")}` 
+                              : "ดึงและส่งข้อมูลล่าสุดเพื่อให้ทุกเครื่องเห็นตรงกัน"}
+                          </div>
+                        </div>
+                      </button>
+                    )}
+
                     {onOpenBackdatedTicketModal && (
                       <button
                         onClick={() => {

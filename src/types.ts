@@ -209,7 +209,7 @@ export interface ExecutiveReportData {
   generatedAt?: string;
 }
 
-export type VehicleStatus = 'active' | 'under_repair' | 'maintenance_due' | 'inactive';
+export type VehicleStatus = 'active' | 'under_repair' | 'maintenance_due' | 'maintenance' | 'inactive';
 export type FuelType = 'diesel' | 'gasoline' | 'cng_ngv' | 'ev' | 'hybrid';
 
 export interface VehicleRecord {

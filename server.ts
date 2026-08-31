@@ -1,8 +1,19 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+
+import { getFleet108Vehicles } from "./src/data/masterFleet108";
+import { 
+  INITIAL_INVENTORY_ITEMS, 
+  INITIAL_GOODS_RECEIPTS, 
+  INITIAL_GOODS_REQUISITIONS 
+} from "./src/data/initialFleetData";
+import { INITIAL_TICKETS } from "./src/data/mockData";
+import { INITIAL_DAILY_INSPECTIONS } from "./src/data/dailyInspectionData";
+import { INITIAL_PM_SCHEDULES_2026 } from "./src/data/pmPlanData";
 
 dotenv.config();
 
@@ -22,17 +33,195 @@ function getGeminiAI(): GoogleGenAI {
   return aiClient;
 }
 
+// Data Directory & Server-Side Persistent Store
+const DATA_DIR = path.join(process.cwd(), "data");
+const DB_FILE_PATH = path.join(DATA_DIR, "server_fleet_db.json");
+
+interface FleetServerDB {
+  version: number;
+  lastUpdated: string;
+  vehicles: any[];
+  tickets: any[];
+  inventory: any[];
+  receipts: any[];
+  requisitions: any[];
+  pmSchedules: any[];
+  dailyInspections: any[];
+}
+
+function getDefaultFleetDB(): FleetServerDB {
+  return {
+    version: 108,
+    lastUpdated: new Date().toISOString(),
+    vehicles: getFleet108Vehicles(),
+    tickets: INITIAL_TICKETS,
+    inventory: INITIAL_INVENTORY_ITEMS,
+    receipts: INITIAL_GOODS_RECEIPTS,
+    requisitions: INITIAL_GOODS_REQUISITIONS,
+    pmSchedules: INITIAL_PM_SCHEDULES_2026,
+    dailyInspections: INITIAL_DAILY_INSPECTIONS,
+  };
+}
+
+let inMemoryDB: FleetServerDB = getDefaultFleetDB();
+
+// Initialize DB from disk or default
+function initServerDB() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(DB_FILE_PATH)) {
+      const raw = fs.readFileSync(DB_FILE_PATH, "utf-8");
+      if (raw && raw.trim().length > 0) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.vehicles) && parsed.vehicles.length > 0) {
+          inMemoryDB = {
+            version: parsed.version || 108,
+            lastUpdated: parsed.lastUpdated || new Date().toISOString(),
+            vehicles: parsed.vehicles,
+            tickets: Array.isArray(parsed.tickets) ? parsed.tickets : INITIAL_TICKETS,
+            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : INITIAL_INVENTORY_ITEMS,
+            receipts: Array.isArray(parsed.receipts) ? parsed.receipts : INITIAL_GOODS_RECEIPTS,
+            requisitions: Array.isArray(parsed.requisitions) ? parsed.requisitions : INITIAL_GOODS_REQUISITIONS,
+            pmSchedules: Array.isArray(parsed.pmSchedules) ? parsed.pmSchedules : INITIAL_PM_SCHEDULES_2026,
+            dailyInspections: Array.isArray(parsed.dailyInspections) ? parsed.dailyInspections : INITIAL_DAILY_INSPECTIONS,
+          };
+          console.log(`[Fleet Server DB] Loaded ${inMemoryDB.vehicles.length} vehicles, ${inMemoryDB.tickets.length} tickets from disk`);
+          return;
+        }
+      }
+    }
+    // If no existing file or empty, write default
+    saveServerDB(inMemoryDB);
+    console.log(`[Fleet Server DB] Initialized fresh master database with ${inMemoryDB.vehicles.length} vehicles`);
+  } catch (err) {
+    console.error("[Fleet Server DB] Error reading DB file:", err);
+    inMemoryDB = getDefaultFleetDB();
+  }
+}
+
+function saveServerDB(data: FleetServerDB) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[Fleet Server DB] Error saving DB to disk:", err);
+  }
+}
+
+initServerDB();
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Increase payload limit for base64 vehicle images
-  app.use(express.json({ limit: "25mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+  // Increase payload limit for base64 vehicle images and full fleet sync
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // API Route: Health Check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
+    res.json({ 
+      status: "ok", 
+      time: new Date().toISOString(), 
+      vehiclesCount: inMemoryDB.vehicles.length, 
+      ticketsCount: inMemoryDB.tickets.length 
+    });
+  });
+
+  // API Route: GET Central Shared Fleet State (All devices query this)
+  app.get("/api/fleet/state", (req, res) => {
+    res.json({
+      success: true,
+      data: inMemoryDB,
+      serverTime: new Date().toISOString()
+    });
+  });
+
+  // API Route: POST Synchronize / Save Updates across all clients
+  app.post("/api/fleet/sync", (req, res) => {
+    try {
+      const { 
+        vehicles, 
+        tickets, 
+        inventory, 
+        receipts, 
+        requisitions, 
+        pmSchedules, 
+        dailyInspections 
+      } = req.body;
+
+      let changed = false;
+      const now = new Date().toISOString();
+
+      if (Array.isArray(vehicles)) {
+        inMemoryDB.vehicles = vehicles;
+        changed = true;
+      }
+      if (Array.isArray(tickets)) {
+        inMemoryDB.tickets = tickets;
+        changed = true;
+      }
+      if (Array.isArray(inventory)) {
+        inMemoryDB.inventory = inventory;
+        changed = true;
+      }
+      if (Array.isArray(receipts)) {
+        inMemoryDB.receipts = receipts;
+        changed = true;
+      }
+      if (Array.isArray(requisitions)) {
+        inMemoryDB.requisitions = requisitions;
+        changed = true;
+      }
+      if (Array.isArray(pmSchedules)) {
+        inMemoryDB.pmSchedules = pmSchedules;
+        changed = true;
+      }
+      if (Array.isArray(dailyInspections)) {
+        inMemoryDB.dailyInspections = dailyInspections;
+        changed = true;
+      }
+
+      if (changed) {
+        inMemoryDB.lastUpdated = now;
+        inMemoryDB.version += 1;
+        saveServerDB(inMemoryDB);
+      }
+
+      res.json({
+        success: true,
+        lastUpdated: inMemoryDB.lastUpdated,
+        version: inMemoryDB.version,
+        counts: {
+          vehicles: inMemoryDB.vehicles.length,
+          tickets: inMemoryDB.tickets.length,
+          inventory: inMemoryDB.inventory.length
+        }
+      });
+    } catch (err: any) {
+      console.error("Error in /api/fleet/sync:", err);
+      res.status(500).json({ success: false, error: err?.message || "Sync failed" });
+    }
+  });
+
+  // API Route: POST Reset back to standard 108 Master Fleet
+  app.post("/api/fleet/reset", (req, res) => {
+    try {
+      inMemoryDB = getDefaultFleetDB();
+      saveServerDB(inMemoryDB);
+      res.json({
+        success: true,
+        data: inMemoryDB,
+        serverTime: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error("Error in /api/fleet/reset:", err);
+      res.status(500).json({ success: false, error: err?.message || "Reset failed" });
+    }
   });
 
   // API Route: AI Vehicle Diagnostic & Estimate

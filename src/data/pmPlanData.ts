@@ -1,5 +1,5 @@
 import { PMMonthlyScheduleItem, PMPlanType, PMChecklistItem } from "../types";
-import { FULL_TNB_FLEET_DATA, UTILITY_VEHICLES } from "./initialFleetData";
+import { FULL_TNB_FLEET_DATA } from "./initialFleetData";
 import { TNB_TRUCKS_DATA } from "./tnbTrucksData";
 import { TNB_TRAILERS_DATA } from "./tnbTrailersData";
 import { REAL_FLEET_PM_SCHEDULES_2026 } from "./pmPlanSample2026";
