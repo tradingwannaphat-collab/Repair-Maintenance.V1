@@ -47,7 +47,7 @@ import {
   RepairItemPart,
   PostRepairCondition
 } from "../types";
-import { CATEGORIES_CONFIG, VEHICLE_TYPE_LABELS, TNB_DEPARTMENTS, getSubCategoryName, STATUS_CONFIG } from "../data/categories";
+import { CATEGORIES_CONFIG, VEHICLE_TYPE_LABELS, TNB_DEPARTMENTS, getSubCategoryName, STATUS_CONFIG, POPULAR_VEHICLE_BRANDS, normalizeVehicleBrand } from "../data/categories";
 import { BreakdownLocationPicker } from "./BreakdownLocationPicker";
 import { TnbLogo } from "./TnbLogo";
 import confetti from "canvas-confetti";
@@ -112,7 +112,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
       if (initialVehicle) {
         setLicensePlate(initialVehicle.licensePlate);
         setProvince(initialVehicle.province || "กรุงเทพมหานคร");
-        setVehicleBrand(initialVehicle.vehicleBrand);
+        setVehicleBrand(normalizeVehicleBrand(initialVehicle.vehicleBrand));
         setVehicleModel(initialVehicle.vehicleModel);
         setVehicleType(initialVehicle.vehicleType);
         setCurrentMileage(String(initialVehicle.currentMileage));
@@ -125,7 +125,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
 
   const [licensePlate, setLicensePlate] = useState(initialVehicle?.licensePlate || "");
   const [province, setProvince] = useState(initialVehicle?.province || "กรุงเทพมหานคร");
-  const [vehicleBrand, setVehicleBrand] = useState(initialVehicle?.vehicleBrand || "ISUZU");
+  const [vehicleBrand, setVehicleBrand] = useState(initialVehicle ? normalizeVehicleBrand(initialVehicle.vehicleBrand) : "HINO");
   const [vehicleModel, setVehicleModel] = useState(initialVehicle?.vehicleModel || "");
   const [vehicleType, setVehicleType] = useState<VehicleType>(initialVehicle?.vehicleType || "tractor_6w");
   const [currentMileage, setCurrentMileage] = useState<string>(initialVehicle ? String(initialVehicle.currentMileage) : "65000");
@@ -184,11 +184,11 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
   const handleAutoFillVehicle = (veh: VehicleRecord) => {
     setLicensePlate(veh.licensePlate);
     setProvince(veh.province || "กรุงเทพมหานคร");
-    setVehicleBrand(veh.vehicleBrand);
-    setVehicleModel(veh.vehicleModel);
-    setVehicleType(veh.vehicleType);
-    setCurrentMileage(String(veh.currentMileage));
-    setDepartment(veh.department);
+    setVehicleBrand(veh.vehicleBrand ? normalizeVehicleBrand(veh.vehicleBrand) : "HINO");
+    setVehicleModel(veh.vehicleModel || "");
+    setVehicleType(veh.vehicleType || "tractor_6w");
+    setCurrentMileage(String(veh.currentMileage || 0));
+    setDepartment(veh.department || "ฝ่ายขนส่ง");
     if (veh.driverName) setRequesterName(veh.driverName);
     if (veh.driverId) setDriverId(veh.driverId);
   };
@@ -1185,26 +1185,45 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ยี่ห้อรถ (Brand)
+                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>ยี่ห้อรถ (Brand) <span className="text-rose-500">*</span></span>
+                  {matchedVehicle?.vehicleBrand && (
+                    <span className="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                      <Check className="w-3 h-3 text-blue-600" />
+                      ดึงยี่ห้อ: {matchedVehicle.vehicleBrand}
+                    </span>
+                  )}
                 </label>
-                <select
-                  value={vehicleBrand}
-                  onChange={(e) => setVehicleBrand(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-800 font-medium"
-                >
-                  <option value="Toyota">Toyota</option>
-                  <option value="Isuzu">Isuzu</option>
-                  <option value="Honda">Honda</option>
-                  <option value="Mitsubishi">Mitsubishi</option>
-                  <option value="Ford">Ford</option>
-                  <option value="Nissan">Nissan</option>
-                  <option value="Hino">Hino (บรรทุก)</option>
-                  <option value="Komatsu">Komatsu (โฟล์คลิฟต์)</option>
-                  <option value="BYD">BYD (EV)</option>
-                  <option value="MG">MG</option>
-                  <option value="อื่นๆ">อื่นๆ</option>
-                </select>
+                <div className="space-y-1.5">
+                  <select
+                    id="select-vehicle-brand"
+                    value={vehicleBrand}
+                    onChange={(e) => setVehicleBrand(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-900 font-bold"
+                  >
+                    {POPULAR_VEHICLE_BRANDS.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                    {vehicleBrand && !POPULAR_VEHICLE_BRANDS.some(b => b.value.toUpperCase() === vehicleBrand.toUpperCase() || b.value === vehicleBrand) && (
+                      <option value={vehicleBrand}>{vehicleBrand} (จากฐานข้อมูล)</option>
+                    )}
+                  </select>
+
+                  {vehicleBrand === "อื่นๆ" && (
+                    <input
+                      type="text"
+                      placeholder="พิมพ์ระบุยี่ห้อรถ เช่น MAN, DAF, SANY, SINOTRUK"
+                      onChange={(e) => {
+                        if (e.target.value.trim()) {
+                          setVehicleBrand(e.target.value.trim());
+                        }
+                      }}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-semibold text-slate-800"
+                    />
+                  )}
+                </div>
               </div>
 
               <div>

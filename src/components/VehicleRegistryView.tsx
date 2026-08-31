@@ -83,6 +83,7 @@ interface VehicleRegistryViewProps {
   onDeleteVehicle: (vehicleId: string) => void;
   onRequestRepairForVehicle?: (vehicle: VehicleRecord) => void;
   onQuickRepair?: (vehicle: VehicleRecord) => void;
+  onOpenVehicleRepairHistory?: (plate: string) => void;
   onSelectTicket?: (ticket: RepairTicket) => void;
   onBulkImportVehicles?: (importedVehicles: VehicleRecord[], mode: "upsert" | "append" | "replace") => void;
   onDeleteAllVehicles?: () => void;
@@ -97,6 +98,7 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
   onDeleteVehicle,
   onRequestRepairForVehicle,
   onQuickRepair,
+  onOpenVehicleRepairHistory,
   onSelectTicket,
   onBulkImportVehicles,
   onDeleteAllVehicles,
@@ -1050,6 +1052,18 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                   27 รายการ
                 </button>
 
+                {onOpenVehicleRepairHistory && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenVehicleRepairHistory(vehicle.licensePlate)}
+                    className="px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1"
+                    title="ดูประวัติการซ่อมบำรุงและค่าใช้จ่ายรายคัน"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>ประวัติซ่อม</span>
+                  </button>
+                )}
+
                 <div className="flex items-center space-x-1">
                   <button
                     onClick={() => handleOpenEdit(vehicle)}
@@ -1783,11 +1797,26 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                       <input
                         type="text"
                         required
-                        placeholder="เช่น ISUZU, HINO, MITSUBISHI FUSO, SCANIA"
+                        list="vehicle-brand-options"
+                        placeholder="เช่น HINO, ISUZU, MITSUBISHI, RCK, SCANIA"
                         value={formData.vehicleBrand}
                         onChange={(e) => setFormData({ ...formData, vehicleBrand: e.target.value })}
                         className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-yellow-400 font-bold"
                       />
+                      <datalist id="vehicle-brand-options">
+                        <option value="HINO">HINO (ฮีโน่ - รถบรรทุก/หัวลาก)</option>
+                        <option value="ISUZU">ISUZU (อีซูซุ - รถบรรทุก/กระบะ)</option>
+                        <option value="RCK">RCK (หางพ่วง 2-3 เพลา)</option>
+                        <option value="MITSUBISHI">MITSUBISHI / FUSO</option>
+                        <option value="SMM">SMM (หางพ่วง)</option>
+                        <option value="SCANIA">SCANIA (สแกเนีย)</option>
+                        <option value="VOLVO">VOLVO (วอลโว่)</option>
+                        <option value="TOYOTA">TOYOTA (โตโยต้า)</option>
+                        <option value="NISSAN">NISSAN / UD TRUCKS</option>
+                        <option value="FORD">FORD (ฟอร์ด)</option>
+                        <option value="KOMATSU">KOMATSU (โฟล์คลิฟต์)</option>
+                        <option value="BYD">BYD (EV)</option>
+                      </datalist>
                     </div>
 
                     {/* 6. แบบ/รุ่น */}

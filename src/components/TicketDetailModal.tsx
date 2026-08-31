@@ -53,6 +53,7 @@ interface TicketDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdateTicket: (updatedTicket: RepairTicket) => void;
+  onDeleteTicket?: (ticketId: string) => void;
   onOpenPrint: (ticket: RepairTicket) => void;
   inventory?: InventoryItem[];
   vehicles?: VehicleRecord[];
@@ -93,6 +94,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   isOpen,
   onClose,
   onUpdateTicket,
+  onDeleteTicket,
   onOpenPrint,
   inventory = [],
   vehicles = [],
@@ -106,6 +108,17 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   const [mechanicNotes, setMechanicNotes] = useState<string>(ticket.mechanicNotes || "");
   const [partsList, setPartsList] = useState<RepairItemPart[]>(ticket.partsList || []);
   const [laborCost, setLaborCost] = useState<number>(ticket.laborCost || 0);
+
+  // Delete Current Ticket (สำหรับลงข้อมูลผิดพลาด)
+  const handleDeleteCurrentTicket = () => {
+    const confirmMessage = `⚠️ ยืนยันการลบใบแจ้งซ่อม ${ticket.ticketNumber} หรือไม่?\n\n- ทะเบียน: ${ticket.licensePlate} (${ticket.vehicleBrand} ${ticket.vehicleModel})\n- ผู้แจ้ง: ${ticket.requesterName} (${ticket.department})\n- อาการ: ${ticket.symptoms}\n\n* การลบนี้ใช้สำหรับกรณีลงข้อมูลผิดพลาด ข้อมูลจะถูกลบออกจากระบบทันที`;
+    if (window.confirm(confirmMessage)) {
+      if (onDeleteTicket) {
+        onDeleteTicket(ticket.id);
+      }
+      onClose();
+    }
+  };
   
   // Stock Disbursal States
   const [partSourceMode, setPartSourceMode] = useState<"stock" | "custom">("stock");
@@ -510,6 +523,19 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {onDeleteTicket && (
+              <button
+                type="button"
+                onClick={handleDeleteCurrentTicket}
+                id="btn-delete-work-order-header"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-semibold border border-rose-500/40 transition-colors"
+                title="ลบใบแจ้งซ่อมนี้ (สำหรับกรณีลงข้อมูลผิด)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ลบใบงาน</span>
+              </button>
+            )}
+
             <button
               onClick={() => onOpenPrint(ticket)}
               id="btn-print-work-order"
@@ -1482,6 +1508,18 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>ปิดงานซ่อมเสร็จสมบูรณ์ (Complete & Deliver)</span>
+                  </button>
+                )}
+
+                {onDeleteTicket && (
+                  <button
+                    type="button"
+                    id="btn-delete-ticket-footer"
+                    onClick={handleDeleteCurrentTicket}
+                    className="w-full py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 font-semibold text-xs border border-rose-300 transition-colors flex items-center justify-center space-x-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>ลบใบแจ้งซ่อมนี้ (สำหรับกรณีลงข้อมูลผิดพลาด)</span>
                   </button>
                 )}
               </div>

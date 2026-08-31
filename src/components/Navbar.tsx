@@ -83,13 +83,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenShareModal
 }) => {
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
+  const [isPmMenuOpen, setIsPmMenuOpen] = useState(false);
+  const [isInventoryMenuOpen, setIsInventoryMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const menuRef = useRef<HTMLDivElement>(null);
+  const pmMenuRef = useRef<HTMLDivElement>(null);
+  const inventoryMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsDataMenuOpen(false);
+      }
+      if (pmMenuRef.current && !pmMenuRef.current.contains(event.target as Node)) {
+        setIsPmMenuOpen(false);
+      }
+      if (inventoryMenuRef.current && !inventoryMenuRef.current.contains(event.target as Node)) {
+        setIsInventoryMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -122,6 +133,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       badgeColor: "bg-blue-400 text-slate-950 font-semibold"
     },
     {
+      id: "repair_history" as AppNavView,
+      label: "ประวัติการซ่อมและค่าใช้จ่ายรายคัน",
+      shortLabel: "ประวัติซ่อม & ค่าใช้จ่าย",
+      icon: History,
+      badge: "สมุดประวัติ",
+      badgeColor: "bg-indigo-400 text-slate-950 font-bold"
+    },
+    {
       id: "daily_inspection" as AppNavView,
       label: "ตรวจสภาพรถประจำวัน",
       shortLabel: "ตรวจรถประจำวัน",
@@ -152,14 +171,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: CircleDot,
       badge: "ยาง/ดอกยาง",
       badgeColor: "bg-rose-400 text-slate-950 font-bold"
-    },
-    {
-      id: "repair_history" as AppNavView,
-      label: "ประวัติการซ่อมและค่าใช้จ่ายรายคัน",
-      shortLabel: "ประวัติซ่อม & ค่าใช้จ่าย",
-      icon: History,
-      badge: "สมุดประวัติ",
-      badgeColor: "bg-indigo-400 text-slate-950 font-bold"
     },
     {
       id: "part_list" as AppNavView,
@@ -195,10 +206,13 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   ];
 
+  const isPmActive = ["pm_plan", "maintenance_intervals", "tire_management"].includes(currentView);
+  const isInventoryActive = ["part_list", "receiving", "requisition"].includes(currentView);
+
   return (
     <header className="sticky top-0 z-40 bg-[#0F172A] text-white shadow-md border-b border-slate-800">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-2">
           {/* Brand Logo - TNB Logistics */}
           <div 
             className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer select-none shrink-0"
@@ -211,50 +225,281 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <div className="flex items-center space-x-1.5 sm:space-x-2">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">TNB Logistics</span>
-                <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                <span className="hidden xl:inline-block text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   Fleet & Workshop
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-normal hidden sm:block">ระบบแจ้งซ่อมบำรุง & คลังอะไหล่ยานพาหนะ</p>
+              <p className="text-[10px] text-slate-400 font-normal hidden 2xl:block">ระบบแจ้งซ่อมบำรุง & คลังอะไหล่ยานพาหนะ</p>
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs (5 Main Modules) */}
-          <div className="hidden lg:flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  id={`nav-tab-${item.id}`}
-                  onClick={() => onSelectView(item.id)}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    isActive
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-300 hover:text-white hover:bg-slate-700/60"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{item.shortLabel}</span>
-                  {item.badge && (
-                    <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${item.badgeColor}`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          {/* Desktop Responsive Navigation Bar */}
+          <div className="hidden lg:flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 space-x-1 shrink">
+            {/* 1. แจ้งซ่อม */}
+            <button
+              id="nav-tab-requester"
+              onClick={() => onSelectView("requester")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "requester"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <Car className="w-3.5 h-3.5" />
+              <span>แจ้งซ่อม</span>
+            </button>
+
+            {/* 2. งานซ่อม & ช่าง */}
+            <button
+              id="nav-tab-worker"
+              onClick={() => onSelectView("worker")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "worker"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <HardHat className="w-3.5 h-3.5" />
+              <span>งานซ่อม</span>
+              {(pendingCount + inProgressCount) > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-amber-400 text-slate-950 font-bold">
+                  {pendingCount + inProgressCount}
+                </span>
+              )}
+            </button>
+
+            {/* 3. ทะเบียนรถ */}
+            <button
+              id="nav-tab-vehicles"
+              onClick={() => onSelectView("vehicles")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "vehicles"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <Truck className="w-3.5 h-3.5" />
+              <span>ทะเบียนรถ</span>
+              {vehicleCount > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-blue-400 text-slate-950 font-semibold">
+                  {vehicleCount}
+                </span>
+              )}
+            </button>
+
+            {/* 4. ประวัติซ่อม & ค่าใช้จ่าย */}
+            <button
+              id="nav-tab-repair_history"
+              onClick={() => onSelectView("repair_history")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "repair_history"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>ประวัติซ่อม & ค่าใช้จ่าย</span>
+            </button>
+
+            {/* 5. ตรวจรถประจำวัน */}
+            <button
+              id="nav-tab-daily_inspection"
+              onClick={() => onSelectView("daily_inspection")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "daily_inspection"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              <span>ตรวจประจำวัน</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-cyan-400 text-slate-950 font-bold hidden xl:inline-block">
+                21 ข้อ
+              </span>
+            </button>
+
+            {/* 6. Dropdown: แผนซ่อม & ยาง (PM & Interval & Tires) */}
+            <div className="relative" ref={pmMenuRef}>
+              <button
+                id="nav-tab-pm-group"
+                type="button"
+                onClick={() => {
+                  setIsPmMenuOpen(!isPmMenuOpen);
+                  setIsInventoryMenuOpen(false);
+                }}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  isPmActive
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>แผนซ่อม & ยาง</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${isPmMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isPmMenuOpen && (
+                <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                    แผนบำรุงรักษาเชิงป้องกัน (PM)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("pm_plan");
+                      setIsPmMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "pm_plan" ? "bg-emerald-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
+                    <div className="flex-1">
+                      <div>แผน PM รถ เดือน/ปี (ISO)</div>
+                      <div className="text-[10px] text-slate-400">ตาราง Preventive Maintenance ประจำปี</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("maintenance_intervals");
+                      setIsPmMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "maintenance_intervals" ? "bg-emerald-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <Gauge className="w-3.5 h-3.5 text-amber-400" />
+                    <div className="flex-1">
+                      <div>ซ่อมตามระยะ & เลขไมล์</div>
+                      <div className="text-[10px] text-slate-400">ตาราง Matrix (DIY อู่ใน vs ศูนย์บริการ)</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("tire_management");
+                      setIsPmMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "tire_management" ? "bg-emerald-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <CircleDot className="w-3.5 h-3.5 text-rose-400" />
+                    <div className="flex-1">
+                      <div>ตรวจ & สลับเปลี่ยนยาง</div>
+                      <div className="text-[10px] text-slate-400">วัดความลึกดอกยาง & ประวัติยางรายคัน</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 7. Dropdown: คลังอะไหล่ (Part List, Receiving, Requisition) */}
+            <div className="relative" ref={inventoryMenuRef}>
+              <button
+                id="nav-tab-inventory-group"
+                type="button"
+                onClick={() => {
+                  setIsInventoryMenuOpen(!isInventoryMenuOpen);
+                  setIsPmMenuOpen(false);
+                }}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  isInventoryActive
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>คลังอะไหล่</span>
+                {inventoryCount > 0 && (
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-purple-400 text-slate-950 font-bold hidden xl:inline-block">
+                    {inventoryCount}
+                  </span>
+                )}
+                <ChevronDown className={`w-3 h-3 transition-transform ${isInventoryMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isInventoryMenuOpen && (
+                <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                    ระบบคลังอะไหล่ & พัสดุ
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("part_list");
+                      setIsInventoryMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "part_list" ? "bg-purple-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <Boxes className="w-3.5 h-3.5 text-purple-400" />
+                    <div className="flex-1">
+                      <div>Part List & แคตตาล็อกอะไหล่</div>
+                      <div className="text-[10px] text-slate-400">รายการอะไหล่, ราคา, จุดสั่งซื้อขั้นต่ำ</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("receiving");
+                      setIsInventoryMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "receiving" ? "bg-purple-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <PackagePlus className="w-3.5 h-3.5 text-emerald-400" />
+                    <div className="flex-1">
+                      <div>รับของเข้าคลัง (Goods Receipt)</div>
+                      <div className="text-[10px] text-slate-400">บันทึกรับเข้าจากใบกำกับ/ร้านค้า</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectView("requisition");
+                      setIsInventoryMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center space-x-2 transition-colors ${
+                      currentView === "requisition" ? "bg-purple-600 text-white font-bold" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    <PackageMinus className="w-3.5 h-3.5 text-amber-400" />
+                    <div className="flex-1">
+                      <div>เบิกของ & อะไหล่ใช้งาน</div>
+                      <div className="text-[10px] text-slate-400">บันทึกเบิกตามใบงานซ่อม / แผนก</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 8. Flow & คู่มือ */}
+            <button
+              id="nav-tab-workflow"
+              onClick={() => onSelectView("workflow")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "workflow"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <Workflow className="w-3.5 h-3.5" />
+              <span>คู่มือระบบ</span>
+            </button>
           </div>
 
           {/* Right Actions: Quick Search, Data Management & New Repair Button */}
-          <div className="flex items-center space-x-2 sm:space-x-2.5">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
             {/* Cloud Real-Time Sync Status Badge & Button */}
             <button
               id="btn-cloud-sync-status"
               onClick={onManualSync}
               title={`สถานะการเชื่อมต่อฐานข้อมูลกลาง: ${isCloudConnected ? "ออนไลน์ ซิงค์ตรงกันทุกเครื่อง" : "ออฟไลน์"}${lastSyncedTime ? ` (อัปเดตล่าสุด: ${new Date(lastSyncedTime).toLocaleTimeString("th-TH")})` : ""}`}
-              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 border ${
+              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 border ${
                 isSyncing
                   ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
                   : isCloudConnected
@@ -263,7 +508,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-amber-400" : isCloudConnected ? "text-emerald-400" : "text-rose-400"}`} />
-              <span className="hidden xl:inline text-[11px]">
+              <span className="hidden 2xl:inline text-[11px]">
                 {isSyncing ? "กำลังซิงค์..." : isCloudConnected ? "ซิงค์ตรงกันทุกเครื่อง" : "ออฟไลน์"}
               </span>
             </button>
@@ -271,10 +516,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-nav-quick-search"
               onClick={onOpenSearchModal}
-              className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition-colors flex items-center space-x-1.5 border border-slate-700/60"
+              className="p-1.5 sm:px-2.5 sm:py-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition-colors flex items-center space-x-1.5 border border-slate-700/60"
               title="ค้นหาด่วนด้วยทะเบียน"
             >
-              <Search className="w-4 h-4 text-blue-400" />
+              <Search className="w-3.5 h-3.5 text-blue-400" />
               <span className="hidden xl:inline text-xs font-medium">ค้นหาทะเบียน</span>
             </button>
 
@@ -284,7 +529,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 id="btn-data-management-menu"
                 onClick={() => setIsDataMenuOpen(!isDataMenuOpen)}
                 title="จัดการฐานข้อมูล (ล้างข้อมูลเพื่อเริ่มใช้งานจริง / โหลดตัวอย่าง)"
-                className="px-2 sm:px-2.5 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition-colors flex items-center space-x-1.5 border border-slate-700/60"
+                className="px-2 sm:px-2.5 py-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition-colors flex items-center space-x-1 border border-slate-700/60"
               >
                 <Database className="w-3.5 h-3.5 text-slate-400" />
                 <span className="hidden md:inline text-xs font-medium text-slate-300">
@@ -419,18 +664,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-nav-share-app"
               onClick={onOpenShareModal}
-              className="px-2 sm:px-2.5 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-white rounded-lg text-xs transition-colors flex items-center space-x-1.5 border border-blue-500/40 font-semibold"
+              className="px-2 sm:px-2.5 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-white rounded-lg text-xs transition-colors flex items-center space-x-1 border border-blue-500/40 font-semibold"
               title="แชร์ลิงก์หน้านี้ให้ทุกคนเห็น"
             >
               <Share2 className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden md:inline">แชร์ให้ทุกคน</span>
+              <span className="hidden lg:inline">แชร์</span>
             </button>
 
             {/* Quick Create Repair Button */}
             <button
               id="btn-open-new-repair"
               onClick={onOpenNewModal}
-              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-2 rounded-lg shadow-sm transition-all transform active:scale-95 text-xs sm:text-sm"
+              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm transition-all transform active:scale-95 text-xs sm:text-sm whitespace-nowrap"
             >
               <PlusCircle className="w-4 h-4" />
               <span className="hidden sm:inline">+ แจ้งซ่อมใหม่</span>

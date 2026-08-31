@@ -201,6 +201,7 @@ export default function App() {
   const [ticketToPrint, setTicketToPrint] = useState<RepairTicket | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isExportBackupModalOpen, setIsExportBackupModalOpen] = useState(false);
+  const [selectedPlateForRepairHistory, setSelectedPlateForRepairHistory] = useState<string | null>(null);
 
   // Initial Central Server Hydration & Background Polling to keep all devices in sync
   useEffect(() => {
@@ -736,6 +737,31 @@ export default function App() {
     );
   };
 
+  // Delete Repair Ticket Handler (สำหรับลบข้อมูลใบแจ้งซ่อมกรณีลงข้อมูลผิดพลาด)
+  const handleDeleteTicket = (ticketId: string) => {
+    const ticketToDelete = tickets.find((t) => t.id === ticketId);
+    const ticketNo = ticketToDelete?.ticketNumber || ticketId;
+
+    const updatedTickets = tickets.filter((t) => t.id !== ticketId);
+    setTickets(updatedTickets);
+
+    try {
+      localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(updatedTickets));
+    } catch (e) {
+      console.error("Error saving tickets after deletion to localStorage:", e);
+    }
+
+    if (selectedTicket && selectedTicket.id === ticketId) {
+      setSelectedTicket(null);
+      setIsDetailModalOpen(false);
+    }
+
+    // Push deletion immediately to server
+    pushServerFleetSync({ tickets: updatedTickets }).catch((err) => {
+      console.warn("Could not sync ticket deletion to central server:", err);
+    });
+  };
+
   // Vehicle Management Handlers
   const handleAddVehicle = (newVehicle: VehicleRecord) => {
     setVehicles((prev) => [newVehicle, ...prev]);
@@ -1080,7 +1106,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-8">
+      <main className="flex-1 max-w-[1700px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-8">
         
         {/* Module 1: หน้าคนแจ้ง (Requester Portal) */}
         {currentView === "requester" && (
@@ -1090,6 +1116,7 @@ export default function App() {
             onOpenNewModal={() => handleOpenNewTicketModal(false)}
             onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
             onOpenPrint={handleOpenPrint}
+            onDeleteTicket={handleDeleteTicket}
           />
         )}
 
@@ -1103,6 +1130,7 @@ export default function App() {
             onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}
             onQuickStatusChange={handleQuickStatusChange}
             onOpenShareModal={() => setIsShareModalOpen(true)}
+            onDeleteTicket={handleDeleteTicket}
           />
         )}
 
@@ -1115,6 +1143,10 @@ export default function App() {
             onUpdateVehicle={handleUpdateVehicle}
             onDeleteVehicle={handleDeleteVehicle}
             onRequestRepairForVehicle={handleRequestRepairForVehicle}
+            onOpenVehicleRepairHistory={(plate) => {
+              setSelectedPlateForRepairHistory(plate);
+              setCurrentView("repair_history");
+            }}
             onBulkImportVehicles={handleBulkImportVehicles}
             onRestoreAllVehicles={handleRestoreAllVehicles}
             onDeleteAllVehicles={handleClearAllVehicles}
@@ -1157,6 +1189,7 @@ export default function App() {
             tickets={tickets}
             onRequestRepairForVehicle={handleRequestRepairForVehicle}
             onOpenVehicleRepairHistory={(plate) => {
+              setSelectedPlateForRepairHistory(plate);
               setCurrentView("repair_history");
             }}
           />
@@ -1169,6 +1202,7 @@ export default function App() {
             tickets={tickets}
             onRequestRepairForVehicle={handleRequestRepairForVehicle}
             onOpenVehicleRepairHistory={(plate) => {
+              setSelectedPlateForRepairHistory(plate);
               setCurrentView("repair_history");
             }}
           />
@@ -1179,8 +1213,10 @@ export default function App() {
           <VehicleRepairHistoryView
             vehicles={vehicles}
             tickets={tickets}
+            initialLicensePlate={selectedPlateForRepairHistory || undefined}
             onSelectTicket={handleSelectTicket}
             onOpenNewTicketForVehicle={handleRequestRepairForVehicle}
+            onDeleteTicket={handleDeleteTicket}
           />
         )}
 
@@ -1237,7 +1273,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="bg-[#0F172A] text-slate-400 text-xs py-6 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2.5">
             <div className="bg-white px-1.5 py-0.5 rounded">
               <TnbLogo variant="blue" size="sm" showSubtitle={false} />
@@ -1287,6 +1323,7 @@ export default function App() {
             setSelectedTicket(null);
           }}
           onUpdateTicket={handleUpdateTicket}
+          onDeleteTicket={handleDeleteTicket}
           onOpenPrint={handleOpenPrint}
           inventory={inventory}
           vehicles={vehicles}

@@ -24,6 +24,7 @@ interface WorkOperationsPortalProps {
   onOpenImportTicketsModal?: () => void;
   onQuickStatusChange: (ticketId: string, newStatus: RepairStatus) => void;
   onOpenShareModal?: () => void;
+  onDeleteTicket?: (ticketId: string) => void;
 }
 
 export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
@@ -33,7 +34,8 @@ export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
   onOpenBackdatedModal,
   onOpenImportTicketsModal,
   onQuickStatusChange,
-  onOpenShareModal
+  onOpenShareModal,
+  onDeleteTicket
 }) => {
   const [subTab, setSubTab] = useState<"kanban" | "analytics">("kanban");
 
@@ -120,6 +122,7 @@ export const WorkOperationsPortal: React.FC<WorkOperationsPortalProps> = ({
           onOpenBackdatedModal={onOpenBackdatedModal}
           onOpenImportTicketsModal={onOpenImportTicketsModal}
           onQuickStatusChange={onQuickStatusChange}
+          onDeleteTicket={onDeleteTicket}
         />
       )}
 

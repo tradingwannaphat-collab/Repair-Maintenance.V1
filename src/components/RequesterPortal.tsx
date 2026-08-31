@@ -22,7 +22,8 @@ import {
   MapPin,
   Navigation,
   Compass,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from "lucide-react";
 import { RepairTicket, RepairStatus, RepairCategory, VehicleType } from "../types";
 import { CATEGORIES_CONFIG, STATUS_CONFIG, VEHICLE_TYPE_LABELS, getSubCategoryName } from "../data/categories";
@@ -35,6 +36,7 @@ interface RequesterPortalProps {
   onOpenNewModal: () => void;
   onOpenBackdatedModal?: () => void;
   onOpenPrint: (ticket: RepairTicket) => void;
+  onDeleteTicket?: (ticketId: string) => void;
 }
 
 const STAGES: { id: RepairStatus; label: string; shortLabel: string }[] = [
@@ -63,7 +65,8 @@ export const RequesterPortal: React.FC<RequesterPortalProps> = ({
   onSelectTicket,
   onOpenNewModal,
   onOpenBackdatedModal,
-  onOpenPrint
+  onOpenPrint,
+  onDeleteTicket
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "completed" | "pending">("all");
@@ -515,6 +518,22 @@ export const RequesterPortal: React.FC<RequesterPortalProps> = ({
 
                 {/* Right: Actions */}
                 <div className="flex items-center space-x-2">
+                  {onDeleteTicket && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`⚠️ ยืนยันการลบใบแจ้งซ่อม ${t.ticketNumber} (${t.licensePlate})?\n\nสำหรับกรณีที่ลงข้อมูลผิดพลาด`)) {
+                          onDeleteTicket(t.id);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center space-x-1 border border-rose-200"
+                      title="ลบใบแจ้งซ่อม (สำหรับกรณีลงข้อมูลผิด)"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>ลบ</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => onOpenPrint(t)}
                     className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center space-x-1"

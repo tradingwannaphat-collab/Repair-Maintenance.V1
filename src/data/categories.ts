@@ -328,3 +328,41 @@ export function getSubCategoryName(categoryId: RepairCategory, subCategoryId?: s
   return sub ? sub.nameTh : subCategoryId;
 }
 
+export const POPULAR_VEHICLE_BRANDS = [
+  { value: "HINO", label: "HINO (ฮีโน่ - รถบรรทุก/หัวลาก 6-10 ล้อ)", isTruck: true },
+  { value: "ISUZU", label: "ISUZU (อีซูซุ - รถบรรทุก/หัวลาก/กระบะ)", isTruck: true },
+  { value: "RCK", label: "RCK (หางพ่วง 2-3 เพลา / หางกึ่งพ่วง)", isTrailer: true },
+  { value: "MITSUBISHI", label: "MITSUBISHI / FUSO (มิตซูบิชิ / ฟูโซ่)", isTruck: true },
+  { value: "SMM", label: "SMM (หางพ่วง / กึ่งพ่วง 3 เพลา)", isTrailer: true },
+  { value: "SCANIA", label: "SCANIA (สแกเนีย - หัวลากยุโรป)", isTruck: true },
+  { value: "VOLVO", label: "VOLVO (วอลโว่ - หัวลาก)", isTruck: true },
+  { value: "TOYOTA", label: "TOYOTA (โตโยต้า - กระบะ/โฟล์คลิฟต์/เก๋ง)" },
+  { value: "NISSAN", label: "NISSAN / UD TRUCKS (นิสสัน / ยูดี)" },
+  { value: "FORD", label: "FORD (ฟอร์ด - กระบะ/แวน)" },
+  { value: "KOMATSU", label: "KOMATSU (โคมัตสุ - รถโฟล์คลิฟต์)" },
+  { value: "BYD", label: "BYD (บีวายดี - รถไฟฟ้า EV/โฟล์คลิฟต์)" },
+  { value: "MG", label: "MG (เอ็มจี)" },
+  { value: "อื่นๆ", label: "อื่นๆ (ระบุเอง)" }
+] as const;
+
+export function normalizeVehicleBrand(brand?: string): string {
+  if (!brand) return "HINO";
+  const b = brand.trim();
+  const bUpper = b.toUpperCase();
+  if (bUpper.includes("HINO") || b.includes("ฮีโน่")) return "HINO";
+  if (bUpper.includes("ISUZU") || b.includes("อีซูซุ")) return "ISUZU";
+  if (bUpper.includes("RCK")) return "RCK";
+  if (bUpper.includes("MITSUBISHI") || bUpper.includes("FUSO") || b.includes("มิตซู")) return "MITSUBISHI";
+  if (bUpper.includes("SMM")) return "SMM";
+  if (bUpper.includes("SCANIA") || b.includes("สแกเนีย")) return "SCANIA";
+  if (bUpper.includes("VOLVO") || b.includes("วอลโว่")) return "VOLVO";
+  if (bUpper.includes("TOYOTA") || b.includes("โตโยต้า")) return "TOYOTA";
+  if (bUpper.includes("NISSAN") || bUpper.includes("UD") || b.includes("นิสสัน")) return "NISSAN";
+  if (bUpper.includes("FORD") || b.includes("ฟอร์ด")) return "FORD";
+  if (bUpper.includes("KOMATSU") || b.includes("โคมัต")) return "KOMATSU";
+  if (bUpper.includes("BYD")) return "BYD";
+  if (bUpper.includes("MG")) return "MG";
+  return b;
+}
+
+

@@ -26,7 +26,8 @@ import {
   Package, 
   Camera, 
   ShieldCheck,
-  Eye
+  Eye,
+  Trash2
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -51,8 +52,11 @@ import { VEHICLE_TYPE_LABELS, CATEGORIES_CONFIG } from "../data/categories";
 interface VehicleRepairHistoryViewProps {
   vehicles: VehicleRecord[];
   tickets: RepairTicket[];
+  initialLicensePlate?: string;
+  initialVehicleId?: string;
   onSelectTicket?: (ticket: RepairTicket) => void;
   onOpenNewTicketForVehicle?: (vehicle: VehicleRecord) => void;
+  onDeleteTicket?: (ticketId: string) => void;
 }
 
 const CATEGORY_COLORS: { [key: string]: string } = {
@@ -67,17 +71,82 @@ const CATEGORY_COLORS: { [key: string]: string } = {
   other: "#94A3B8"
 };
 
+// Robust plate matching helper
+function isPlateMatch(p1?: string, p2?: string): boolean {
+  if (!p1 || !p2) return false;
+  const clean1 = p1.replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
+  const clean2 = p2.replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
+  if (clean1 === clean2) return true;
+  if (clean1.length >= 4 && clean2.length >= 4 && (clean1.includes(clean2) || clean2.includes(clean1))) return true;
+  return false;
+}
+
 export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> = ({
   vehicles,
   tickets,
+  initialLicensePlate,
+  initialVehicleId,
   onSelectTicket,
-  onOpenNewTicketForVehicle
+  onOpenNewTicketForVehicle,
+  onDeleteTicket
 }) => {
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(() => vehicles[0]?.id || "");
+  // Pre-calculate repair stats for each vehicle across the fleet
+  const vehicleStatsMap = useMemo(() => {
+    const map = new Map<string, { count: number; totalCost: number }>();
+    vehicles.forEach((v) => {
+      const vTickets = tickets.filter(
+        (t) =>
+          t.vehicleId === v.id ||
+          isPlateMatch(t.licensePlate, v.licensePlate)
+      );
+      const totalCost = vTickets.reduce(
+        (sum, t) => sum + (t.totalCost || (t.partsCost || 0) + (t.laborCost || 0)),
+        0
+      );
+      map.set(v.id, { count: vTickets.length, totalCost });
+    });
+    return map;
+  }, [vehicles, tickets]);
+
+  // Determine smart default vehicle (prioritize vehicle with repair history or highest cost)
+  const initialDefaultVehicleId = useMemo(() => {
+    if (initialVehicleId) {
+      const found = vehicles.find((v) => v.id === initialVehicleId);
+      if (found) return found.id;
+    }
+    if (initialLicensePlate) {
+      const found = vehicles.find((v) => isPlateMatch(v.licensePlate, initialLicensePlate));
+      if (found) return found.id;
+    }
+    // Find vehicle with the highest repair cost or tickets
+    let bestId = vehicles[0]?.id || "";
+    let maxCost = -1;
+    vehicles.forEach((v) => {
+      const st = vehicleStatsMap.get(v.id);
+      if (st && st.totalCost > maxCost && st.totalCost > 0) {
+        maxCost = st.totalCost;
+        bestId = v.id;
+      }
+    });
+    return bestId;
+  }, [vehicles, vehicleStatsMap, initialVehicleId, initialLicensePlate]);
+
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(initialDefaultVehicleId);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<"all" | "this_year" | "last_6_months">("all");
   const [viewMode, setViewMode] = useState<"single_vehicle" | "fleet_overview">("single_vehicle");
+
+  // Sync when initialLicensePlate or initialVehicleId prop changes
+  React.useEffect(() => {
+    if (initialVehicleId) {
+      const found = vehicles.find((v) => v.id === initialVehicleId);
+      if (found) setSelectedVehicleId(found.id);
+    } else if (initialLicensePlate) {
+      const found = vehicles.find((v) => isPlateMatch(v.licensePlate, initialLicensePlate));
+      if (found) setSelectedVehicleId(found.id);
+    }
+  }, [initialVehicleId, initialLicensePlate, vehicles]);
 
   // Selected vehicle object
   const selectedVehicle = useMemo(() => {
@@ -90,9 +159,7 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
     return tickets.filter((t) => {
       const matchVehicle =
         t.vehicleId === selectedVehicle.id ||
-        (t.licensePlate &&
-          selectedVehicle.licensePlate &&
-          t.licensePlate.replace(/\s+/g, "") === selectedVehicle.licensePlate.replace(/\s+/g, ""));
+        isPlateMatch(t.licensePlate, selectedVehicle.licensePlate);
       if (!matchVehicle) return false;
 
       // Category filter
@@ -111,6 +178,24 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
       return true;
     });
   }, [tickets, selectedVehicle, categoryFilter, searchQuery]);
+
+  // Split vehicles into: with repair records vs without repair records
+  const { vehiclesWithHistory, vehiclesWithoutHistory } = useMemo(() => {
+    const withHist: Array<{ vehicle: VehicleRecord; count: number; totalCost: number }> = [];
+    const withoutHist: VehicleRecord[] = [];
+
+    vehicles.forEach((v) => {
+      const st = vehicleStatsMap.get(v.id) || { count: 0, totalCost: 0 };
+      if (st.count > 0 || st.totalCost > 0) {
+        withHist.push({ vehicle: v, count: st.count, totalCost: st.totalCost });
+      } else {
+        withoutHist.push(v);
+      }
+    });
+
+    withHist.sort((a, b) => b.totalCost - a.totalCost || b.count - a.count);
+    return { vehiclesWithHistory: withHist, vehiclesWithoutHistory: withoutHist };
+  }, [vehicles, vehicleStatsMap]);
 
   // Statistics for selected vehicle
   const stats = useMemo(() => {
@@ -201,9 +286,7 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
       const vTickets = tickets.filter(
         (t) =>
           t.vehicleId === v.id ||
-          (t.licensePlate &&
-            v.licensePlate &&
-            t.licensePlate.replace(/\s+/g, "") === v.licensePlate.replace(/\s+/g, ""))
+          isPlateMatch(t.licensePlate, v.licensePlate)
       );
       const totalCost = vTickets.reduce(
         (sum, t) => sum + (t.totalCost || (t.partsCost || 0) + (t.laborCost || 0)),
@@ -220,7 +303,7 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
         laborCost,
         costPerKm: v.currentMileage ? (totalCost / v.currentMileage).toFixed(2) : "0.00"
       };
-    }).sort((a, b) => b.totalCost - a.totalCost);
+    }).sort((a, b) => b.totalCost - a.totalCost || b.ticketCount - a.ticketCount);
   }, [vehicles, tickets]);
 
   const handlePrintLogbook = () => {
@@ -285,82 +368,137 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
       {viewMode === "single_vehicle" && (
         <div className="space-y-6">
           {/* Vehicle Selector & Search Bar */}
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3 flex-1">
-              {/* Vehicle Dropdown */}
-              <div className="min-w-[260px] flex-1">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  🚗 เลือกรถที่ต้องการดูประวัติ:
-                </label>
-                <select
-                  value={selectedVehicleId}
-                  onChange={(e) => setSelectedVehicleId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 font-bold text-slate-900 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.licensePlate} - {v.vehicleBrand} {v.vehicleModel} ({VEHICLE_TYPE_LABELS[v.vehicleType] || v.vehicleType}) {v.driverName ? `• ขับโดย: ${v.driverName}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3 flex-1">
+                {/* Vehicle Dropdown */}
+                <div className="min-w-[280px] flex-1">
+                  <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center justify-between">
+                    <span>🚗 เลือกรถที่ต้องการดูประวัติ:</span>
+                    {vehiclesWithHistory.length > 0 && (
+                      <span className="text-[10px] text-indigo-600 font-semibold">
+                        (มีประวัติซ่อม {vehiclesWithHistory.length} คัน)
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedVehicleId}
+                    onChange={(e) => setSelectedVehicleId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 font-bold text-slate-900 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    {/* Group 1: Vehicles with repair history */}
+                    {vehiclesWithHistory.length > 0 && (
+                      <optgroup label={`✨ รถที่มีประวัติการซ่อมบำรุงและค่าใช้จ่าย (${vehiclesWithHistory.length} คัน)`}>
+                        {vehiclesWithHistory.map((item, idx) => (
+                          <option key={item.vehicle.id} value={item.vehicle.id}>
+                            {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "🔧"} {item.vehicle.licensePlate} - {item.vehicle.vehicleBrand} {item.vehicle.vehicleModel} • {item.count} ใบงาน (฿{item.totalCost.toLocaleString()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
 
-              {/* Category Filter */}
-              <div className="min-w-[160px]">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  หมวดหมู่งานซ่อม:
-                </label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                  <option value="all">ทุกหมวดหมู่ ({tickets.length})</option>
-                  {Object.values(CATEGORIES_CONFIG).map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.nameTh}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    {/* Group 2: Other fleet vehicles */}
+                    {vehiclesWithoutHistory.length > 0 && (
+                      <optgroup label={`📋 รถอื่นๆ ในฟลีท (${vehiclesWithoutHistory.length} คัน - ยังไม่มีประวัติการซ่อม)`}>
+                        {vehiclesWithoutHistory.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.licensePlate} - {v.vehicleBrand} {v.vehicleModel} ({VEHICLE_TYPE_LABELS[v.vehicleType] || v.vehicleType}) {v.driverName ? `• ${v.driverName}` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
 
-              {/* Search in problem description */}
-              <div className="min-w-[200px] flex-1">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  ค้นหารายการซ่อม/ช่าง/เลขใบงาน:
-                </label>
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="พิมพ์คำค้นหา..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
+                {/* Category Filter */}
+                <div className="min-w-[160px]">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    หมวดหมู่งานซ่อม:
+                  </label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value="all">ทุกหมวดหมู่ ({tickets.length})</option>
+                    {Object.values(CATEGORIES_CONFIG).map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.nameTh}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Search in problem description */}
+                <div className="min-w-[200px] flex-1">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    ค้นหารายการซ่อม/ช่าง/เลขใบงาน:
+                  </label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="พิมพ์คำค้นหา..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-end gap-2 pt-2 md:pt-0">
+                {onOpenNewTicketForVehicle && selectedVehicle && (
+                  <button
+                    onClick={() => onOpenNewTicketForVehicle(selectedVehicle)}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>แจ้งซ่อมคันนี้</span>
+                  </button>
+                )}
+                <button
+                  onClick={handlePrintLogbook}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-600" />
+                  <span>พิมพ์สมุดประวัติ</span>
+                </button>
+              </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex items-end gap-2 pt-2 md:pt-0">
-              {onOpenNewTicketForVehicle && selectedVehicle && (
-                <button
-                  onClick={() => onOpenNewTicketForVehicle(selectedVehicle)}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>แจ้งซ่อมคันนี้</span>
-                </button>
-              )}
-              <button
-                onClick={handlePrintLogbook}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-600" />
-                <span>พิมพ์สมุดประวัติ</span>
-              </button>
-            </div>
+            {/* Quick Vehicle Shortcut Chips */}
+            {vehiclesWithHistory.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1 mr-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  คลิกเลือกรถที่มีประวัติซ่อมบำรุง:
+                </span>
+                {vehiclesWithHistory.map((item, idx) => {
+                  const isSel = item.vehicle.id === selectedVehicleId;
+                  return (
+                    <button
+                      key={item.vehicle.id}
+                      type="button"
+                      onClick={() => setSelectedVehicleId(item.vehicle.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        isSel
+                          ? "bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-300"
+                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
+                      }`}
+                      title={`${item.vehicle.vehicleBrand} ${item.vehicle.vehicleModel} - มีประวัติ ${item.count} ใบงาน รวม ฿${item.totalCost.toLocaleString()}`}
+                    >
+                      <span>{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "🚗"}</span>
+                      <span>{item.vehicle.licensePlate}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${isSel ? "bg-white/20 text-white" : "bg-indigo-200/80 text-indigo-900"}`}>
+                        ฿{item.totalCost.toLocaleString()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Vehicle Profile & KPI Summary Cards */}
@@ -593,15 +731,31 @@ export const VehicleRepairHistoryView: React.FC<VehicleRepairHistoryViewProps> =
                             ฿{total.toLocaleString()}
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            {onSelectTicket && (
-                              <button
-                                onClick={() => onSelectTicket(ticket)}
-                                className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
-                                title="ดูรายละเอียดใบแจ้งซ่อม"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                            )}
+                            <div className="flex items-center justify-center space-x-1">
+                              {onSelectTicket && (
+                                <button
+                                  onClick={() => onSelectTicket(ticket)}
+                                  className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
+                                  title="ดูรายละเอียดใบแจ้งซ่อม"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              )}
+                              {onDeleteTicket && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm(`⚠️ ยืนยันการลบใบแจ้งซ่อม ${ticket.ticketNumber} (${ticket.licensePlate})?\n\nสำหรับกรณีที่ลงข้อมูลผิดพลาด`)) {
+                                      onDeleteTicket(ticket.id);
+                                    }
+                                  }}
+                                  className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                                  title="ลบใบแจ้งซ่อมนี้ (สำหรับลงข้อมูลผิด)"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

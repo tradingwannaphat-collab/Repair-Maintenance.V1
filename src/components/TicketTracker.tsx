@@ -21,7 +21,8 @@ import {
   RotateCcw,
   CheckSquare,
   MapPin,
-  Navigation
+  Navigation,
+  Trash2
 } from "lucide-react";
 import { RepairTicket, RepairCategory, RepairStatus, Priority, VehicleType } from "../types";
 import { CATEGORIES_CONFIG, STATUS_CONFIG, VEHICLE_TYPE_LABELS, getSubCategoryName } from "../data/categories";
@@ -33,6 +34,7 @@ interface TicketTrackerProps {
   onOpenBackdatedModal?: () => void;
   onOpenImportTicketsModal?: () => void;
   onQuickStatusChange: (ticketId: string, newStatus: RepairStatus) => void;
+  onDeleteTicket?: (ticketId: string) => void;
 }
 
 const TECHNICIANS = [
@@ -51,7 +53,8 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
   onOpenNewModal,
   onOpenBackdatedModal,
   onOpenImportTicketsModal,
-  onQuickStatusChange
+  onQuickStatusChange,
+  onDeleteTicket
 }) => {
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
@@ -572,14 +575,31 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
                             )}
                           </div>
 
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                            t.priority === 'critical' ? 'bg-rose-100 text-rose-800' :
-                            t.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                            t.priority === 'medium' ? 'bg-amber-100 text-amber-800' :
-                            'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            {t.priority}
-                          </span>
+                          <div className="flex items-center space-x-1">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              t.priority === 'critical' ? 'bg-rose-100 text-rose-800' :
+                              t.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                              t.priority === 'medium' ? 'bg-amber-100 text-amber-800' :
+                              'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {t.priority}
+                            </span>
+                            {onDeleteTicket && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`⚠️ ยืนยันการลบใบแจ้งซ่อม ${t.ticketNumber} (${t.licensePlate})?\n\nสำหรับกรณีที่ลงข้อมูลผิดพลาด`)) {
+                                    onDeleteTicket(t.id);
+                                  }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"
+                                title="ลบใบแจ้งซ่อมนี้ (สำหรับลงข้อมูลผิด)"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* License Plate & Car Model */}
@@ -750,9 +770,29 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
                         ฿{t.totalCost.toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className="text-blue-600 hover:text-blue-700 font-semibold inline-flex items-center gap-0.5">
-                          ดูรายละเอียด <ChevronRight className="w-3.5 h-3.5" />
-                        </span>
+                        <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => onSelectTicket(t)}
+                            className="px-2.5 py-1 text-blue-600 hover:text-white hover:bg-blue-600 rounded-md font-semibold text-xs transition-colors inline-flex items-center gap-0.5"
+                          >
+                            <span>ดูงาน</span> <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                          {onDeleteTicket && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`⚠️ ยืนยันการลบใบแจ้งซ่อม ${t.ticketNumber} (${t.licensePlate})?\n\nสำหรับกรณีที่ลงข้อมูลผิดพลาด`)) {
+                                  onDeleteTicket(t.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                              title="ลบใบแจ้งซ่อมนี้ (สำหรับลงข้อมูลผิด)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
