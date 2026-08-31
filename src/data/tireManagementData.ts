@@ -16,8 +16,41 @@ export const TIRE_BRANDS = [
   "Continental",
   "Yokohama",
   "Dunlop",
-  "Double Coin"
+  "Double Coin",
+  "Giti",
+  "Linglong",
+  "Sailun",
+  "Westlake",
+  "Advance",
+  "Hankook",
+  "Apollo",
+  "Firestone",
+  "Leao",
+  "Triangle",
+  "__OTHER__"
 ];
+
+export const TIRE_TYPES = [
+  { key: "new", label: "ยางใหม่ (New Tire)", badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { key: "retread", label: "ยางหล่อดอก (Retread Tire)", badgeColor: "bg-purple-50 text-purple-700 border-purple-200" },
+  { key: "cold_retread", label: "ยางหล่อเย็น (Cold Retread)", badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  { key: "hot_retread", label: "ยางหล่อร้อน (Hot Retread)", badgeColor: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
+  { key: "rotate", label: "สลับยาง / ยางหมุนเวียน (Rotated)", badgeColor: "bg-blue-50 text-blue-700 border-blue-200" },
+  { key: "used", label: "ยางมือสองสภาพดี (Used)", badgeColor: "bg-amber-50 text-amber-700 border-amber-200" },
+  { key: "other", label: "อื่นๆ / ระบุเอง", badgeColor: "bg-slate-50 text-slate-700 border-slate-200" }
+];
+
+export const getTireTypeLabel = (type: string) => {
+  const match = TIRE_TYPES.find((t) => t.key === type);
+  if (match) return match.label.split(" ")[0];
+  if (type === "new") return "ยางใหม่";
+  if (type === "retread") return "หล่อดอก";
+  if (type === "cold_retread") return "หล่อเย็น";
+  if (type === "hot_retread") return "หล่อร้อน";
+  if (type === "rotate") return "สลับยาง";
+  if (type === "used") return "ยางมือสอง";
+  return type || "ยางใหม่";
+};
 
 export const TIRE_SIZES = [
   "11R22.5",

@@ -595,7 +595,7 @@ export interface TireReplacementRecord {
   tireSize?: string; // e.g. "11R22.5", "295/80R22.5", "215/75R17.5", "195R14C"
   tireSerial?: string; // e.g. "SN-88492041"
   dotCode?: string; // e.g. "DOT 3424" (Week 34 Year 2024)
-  tireType: 'new' | 'retread' | 'rotate' | 'used'; // ยางใหม่ / ยางหล่อดอก / สลับยาง / ยางมือสองสภาพดี
+  tireType: 'new' | 'retread' | 'cold_retread' | 'hot_retread' | 'rotate' | 'used' | string; // ยางใหม่ / ยางหล่อดอก / หล่อเย็น / หล่อร้อน / สลับยาง / ยางมือสอง / อื่นๆ
   initialTreadDepthMm: number; // e.g. 14.0 mm
   currentTreadDepthMm: number; // e.g. 9.5 mm
   costPerTire: number; // e.g. 8500

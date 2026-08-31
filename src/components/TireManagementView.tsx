@@ -41,8 +41,10 @@ import {
 import { 
   TIRE_BRANDS, 
   TIRE_SIZES, 
+  TIRE_TYPES,
   TIRE_REPLACEMENT_REASONS,
   INITIAL_TIRE_REPLACEMENTS,
+  getTireTypeLabel,
   getVehicleTireMeasurements 
 } from "../data/tireManagementData";
 import { 
@@ -109,6 +111,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   // Search in replacement logs
   const [historySearch, setHistorySearch] = useState<string>("");
   const [historyBrandFilter, setHistoryBrandFilter] = useState<string>("all");
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>("all");
 
   // Modals
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState<boolean>(false);
@@ -119,18 +122,40 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   const [targetPositions, setTargetPositions] = useState<string[]>([]);
   const [replaceDate, setReplaceDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [replaceMileage, setReplaceMileage] = useState<number>(selectedVehicle?.currentMileage || 0);
+  
+  // Brand state (Supports Preset list & Custom Typing)
   const [replaceBrand, setReplaceBrand] = useState<string>("Bridgestone");
+  const [isCustomBrand, setIsCustomBrand] = useState<boolean>(false);
+  const [customBrandText, setCustomBrandText] = useState<string>("");
+
   const [replaceModel, setReplaceModel] = useState<string>("R156");
+  
+  // Size state (Supports Preset list & Custom Typing)
   const [replaceSize, setReplaceSize] = useState<string>("295/80R22.5");
+  const [isCustomSize, setIsCustomSize] = useState<boolean>(false);
+  const [customSizeText, setCustomSizeText] = useState<string>("");
+
   const [replaceSerial, setReplaceSerial] = useState<string>("");
   const [replaceDot, setReplaceDot] = useState<string>("DOT 3424");
-  const [replaceType, setReplaceType] = useState<"new" | "retread" | "rotate" | "used">("new");
+
+  // Type state (New, Retread, Cold Retread, Hot Retread, Rotated, Used, Custom)
+  const [replaceType, setReplaceType] = useState<string>("new");
+  const [isCustomType, setIsCustomType] = useState<boolean>(false);
+  const [customTypeText, setCustomTypeText] = useState<string>("");
+
   const [replaceInitialDepth, setReplaceInitialDepth] = useState<number>(14.0);
   const [replaceCost, setReplaceCost] = useState<number>(9000);
   const [replaceSupplier, setReplaceSupplier] = useState<string>("ศูนย์บริการ บริดจสโตน บอย ยางยนต์");
   const [replaceTechnician, setReplaceTechnician] = useState<string>("ช่างสมชาย (อู่ TNB)");
   const [replaceReason, setReplaceReason] = useState<string>("worn_out");
   const [replaceNotes, setReplaceNotes] = useState<string>("");
+
+  // Dynamic list of all known brands for filter dropdown
+  const allKnownBrands = useMemo(() => {
+    const customFromLogs = replacements.map((r) => r.tireBrand).filter(Boolean);
+    const baseBrands = TIRE_BRANDS.filter((b) => b !== "__OTHER__");
+    return Array.from(new Set([...baseBrands, ...customFromLogs]));
+  }, [replacements]);
 
   // Rotation Form State
   const [rotSourcePos, setRotSourcePos] = useState<string>("");
@@ -254,9 +279,16 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
       if (historyBrandFilter !== "all" && r.tireBrand !== historyBrandFilter) {
         return false;
       }
+      if (historyTypeFilter !== "all") {
+        if (historyTypeFilter === "retread_all") {
+          if (!["retread", "cold_retread", "hot_retread"].includes(r.tireType)) return false;
+        } else if (r.tireType !== historyTypeFilter) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [replacements, historySearch, historyBrandFilter]);
+  }, [replacements, historySearch, historyBrandFilter, historyTypeFilter]);
 
   // -------------------------------------------------------------
   // 2. HANDLERS
@@ -273,6 +305,15 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
       setTargetPositions([currentPositionsConfig[0]?.key || "FL"]);
     }
     setReplaceSerial(`SN-${Math.floor(1000000 + Math.random() * 9000000)}`);
+    
+    // Reset custom typing states
+    setIsCustomBrand(false);
+    setCustomBrandText("");
+    setIsCustomType(false);
+    setCustomTypeText("");
+    setIsCustomSize(false);
+    setCustomSizeText("");
+
     setIsReplaceModalOpen(true);
   };
 
@@ -280,6 +321,21 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   const handleSaveTireReplacement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVehicle || targetPositions.length === 0) return;
+
+    // Resolve effective brand (preset vs custom typing)
+    const effectiveBrand = (isCustomBrand || replaceBrand === "__OTHER__")
+      ? (customBrandText.trim() || "อื่นๆ")
+      : replaceBrand;
+
+    // Resolve effective tire type
+    const effectiveType = (isCustomType || replaceType === "other")
+      ? (customTypeText.trim() || "other")
+      : replaceType;
+
+    // Resolve effective size
+    const effectiveSize = (isCustomSize || replaceSize === "__OTHER__")
+      ? (customSizeText.trim() || "295/80R22.5")
+      : replaceSize;
 
     const reasonObj = TIRE_REPLACEMENT_REASONS.find((r) => r.key === replaceReason);
     const newRecords: TireReplacementRecord[] = targetPositions.map((posKey, idx) => {
@@ -295,12 +351,12 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
         positionNameTh: cfg ? cfg.nameTh : posKey,
         replacedDate: replaceDate,
         replacedMileage: Number(replaceMileage),
-        tireBrand: replaceBrand,
+        tireBrand: effectiveBrand,
         tireModel: replaceModel,
-        tireSize: replaceSize,
+        tireSize: effectiveSize,
         tireSerial: replaceSerial ? `${replaceSerial}-${idx + 1}` : undefined,
         dotCode: replaceDot,
-        tireType: replaceType,
+        tireType: effectiveType as any,
         initialTreadDepthMm: Number(replaceInitialDepth),
         currentTreadDepthMm: Number(replaceInitialDepth),
         costPerTire: Number(replaceCost),
@@ -1032,18 +1088,37 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                 />
               </div>
 
-              {/* Brand Filter */}
+              {/* Brand Filter (Includes dynamic custom brands) */}
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
                 <span className="font-bold text-slate-600">ยี่ห้อ:</span>
                 <select
                   value={historyBrandFilter}
                   onChange={(e) => setHistoryBrandFilter(e.target.value)}
-                  className="bg-white border border-slate-300 text-slate-800 font-semibold text-xs rounded-lg px-2 py-1 focus:ring-2 focus:ring-blue-500"
+                  className="bg-white border border-slate-300 text-slate-800 font-semibold text-xs rounded-lg px-2 py-1 focus:ring-2 focus:ring-blue-500 max-w-[150px]"
                 >
-                  <option value="all">ทุกยี่ห้อ</option>
-                  {TIRE_BRANDS.map((b) => (
+                  <option value="all">ทุกยี่ห้อ ({allKnownBrands.length})</option>
+                  {allKnownBrands.map((b) => (
                     <option key={b} value={b}>{b}</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Tire Type Filter */}
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                <span className="font-bold text-slate-600">ประเภท:</span>
+                <select
+                  value={historyTypeFilter}
+                  onChange={(e) => setHistoryTypeFilter(e.target.value)}
+                  className="bg-white border border-slate-300 text-slate-800 font-semibold text-xs rounded-lg px-2 py-1 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">ทุกประเภท</option>
+                  <option value="new">ยางใหม่</option>
+                  <option value="retread_all">ยางหล่อดอก (ทั้งหมด)</option>
+                  <option value="retread">หล่อดอกทั่วไป</option>
+                  <option value="cold_retread">หล่อเย็น</option>
+                  <option value="hot_retread">หล่อร้อน</option>
+                  <option value="rotate">สลับยาง</option>
+                  <option value="used">ยางมือสอง</option>
                 </select>
               </div>
             </div>
@@ -1123,14 +1198,20 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                           <div className="text-[10px] text-slate-400">{rec.tireSerial || '-'}</div>
                         </td>
                         <td className="py-3 px-3 text-center border-r border-slate-100">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border whitespace-nowrap ${
                             rec.tireType === "new"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : rec.tireType === "retread"
                               ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : rec.tireType === "cold_retread"
+                              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                              : rec.tireType === "hot_retread"
+                              ? "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200"
+                              : rec.tireType === "used"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
                               : "bg-blue-50 text-blue-700 border-blue-200"
                           }`}>
-                            {rec.tireType === "new" ? "ยางใหม่" : rec.tireType === "retread" ? "หล่อดอก" : "สลับยาง"}
+                            {getTireTypeLabel(rec.tireType)}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 border-r border-slate-100">
@@ -1255,51 +1336,133 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                 </div>
               </div>
 
-              {/* Row 2: Brand, Model, Size */}
+              {/* Row 2: Brand (Dropdown + Custom Typing Option), Model, Size */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Brand Selection / Free-text Input */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ยี่ห้อยาง: <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={replaceBrand}
-                    onChange={(e) => setReplaceBrand(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-                  >
-                    {TIRE_BRANDS.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ยี่ห้อยาง: <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomBrand(!isCustomBrand);
+                        if (!isCustomBrand && !customBrandText) {
+                          setCustomBrandText(replaceBrand !== "__OTHER__" ? replaceBrand : "");
+                        }
+                      }}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline transition-colors"
+                    >
+                      {isCustomBrand ? "📋 เลือกจากลิสต์" : "✏️ พิมพ์ยี่ห้อเอง"}
+                    </button>
+                  </div>
+
+                  {isCustomBrand ? (
+                    <div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="พิมพ์ชื่อยี่ห้อ เช่น Giti, Linglong, Westlake..."
+                        value={customBrandText}
+                        onChange={(e) => setCustomBrandText(e.target.value)}
+                        className="w-full px-3 py-2 bg-amber-50/70 border-2 border-amber-400 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                        autoFocus
+                      />
+                      <span className="text-[10px] text-amber-700 font-medium block mt-0.5">
+                        ✨ พิมพ์ระบุแบรนด์อื่นได้อย่างอิสระ
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      value={replaceBrand}
+                      onChange={(e) => {
+                        if (e.target.value === "__OTHER__") {
+                          setIsCustomBrand(true);
+                          setCustomBrandText("");
+                        } else {
+                          setReplaceBrand(e.target.value);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                    >
+                      {TIRE_BRANDS.map((b) => (
+                        <option key={b} value={b}>
+                          {b === "__OTHER__" ? "➕ อื่นๆ (พิมพ์ระบุเอง...)" : b}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+
+                {/* Model */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    รุ่นยาง:
+                    รุ่นยาง / ลายดอก:
                   </label>
                   <input
                     type="text"
-                    placeholder="เช่น R156, X Multi"
+                    placeholder="เช่น R156, X Multi, ดอกสร้อย..."
                     value={replaceModel}
                     onChange={(e) => setReplaceModel(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                {/* Size (Dropdown + Custom Typing Option) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ขนาดยาง:
-                  </label>
-                  <select
-                    value={replaceSize}
-                    onChange={(e) => setReplaceSize(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-                  >
-                    {TIRE_SIZES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ขนาดยาง:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomSize(!isCustomSize);
+                        if (!isCustomSize && !customSizeText) {
+                          setCustomSizeText(replaceSize);
+                        }
+                      }}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline transition-colors"
+                    >
+                      {isCustomSize ? "📋 เลือกจากลิสต์" : "✏️ พิมพ์ขนาดเอง"}
+                    </button>
+                  </div>
+
+                  {isCustomSize ? (
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="เช่น 11R22.5, 315/80R22.5..."
+                        value={customSizeText}
+                        onChange={(e) => setCustomSizeText(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <select
+                      value={replaceSize}
+                      onChange={(e) => {
+                        if (e.target.value === "__OTHER__") {
+                          setIsCustomSize(true);
+                          setCustomSizeText("");
+                        } else {
+                          setReplaceSize(e.target.value);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                    >
+                      {TIRE_SIZES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                      <option value="__OTHER__">➕ อื่นๆ (พิมพ์ขนาดเอง...)</option>
+                    </select>
+                  )}
                 </div>
               </div>
 
-              {/* Row 3: DOT, Serial, Tire Type */}
+              {/* Row 3: DOT, Serial, Tire Type (With Retread options & Custom) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1325,20 +1488,67 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                {/* Tire Type (Supports New, Retread, Cold/Hot Retread, Used, Custom) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ประเภทยาง:
-                  </label>
-                  <select
-                    value={replaceType}
-                    onChange={(e) => setReplaceType(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="new">ยางใหม่ (New Tire)</option>
-                    <option value="retread">ยางหล่อดอก (Retread)</option>
-                    <option value="rotate">สลับยาง (Rotated)</option>
-                    <option value="used">ยางมือสองสภาพดี</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ประเภทยาง: <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomType(!isCustomType);
+                        if (!isCustomType && !customTypeText) {
+                          setCustomTypeText("");
+                        }
+                      }}
+                      className="text-[10px] text-purple-600 hover:text-purple-800 font-bold underline transition-colors"
+                    >
+                      {isCustomType ? "📋 เลือกจากลิสต์" : "✏️ ระบุประเภทเอง"}
+                    </button>
+                  </div>
+
+                  {isCustomType ? (
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="ระบุประเภทยาง เช่น หล่อดอกโครงเรเดียล..."
+                        value={customTypeText}
+                        onChange={(e) => setCustomTypeText(e.target.value)}
+                        className="w-full px-3 py-2 bg-purple-50/70 border-2 border-purple-400 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-500 focus:bg-white"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <select
+                      value={replaceType}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "other") {
+                          setIsCustomType(true);
+                          setCustomTypeText("");
+                        } else {
+                          setReplaceType(val);
+                          // Auto adjust typical cost / depth hints for retread
+                          if (["retread", "cold_retread", "hot_retread"].includes(val)) {
+                            if (replaceCost === 9000 || replaceCost === 0) setReplaceCost(4800);
+                            if (replaceInitialDepth === 14.0) setReplaceInitialDepth(13.0);
+                          } else if (val === "new") {
+                            if (replaceCost === 4800) setReplaceCost(9000);
+                            if (replaceInitialDepth === 13.0) setReplaceInitialDepth(14.0);
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                    >
+                      {TIRE_TYPES.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
