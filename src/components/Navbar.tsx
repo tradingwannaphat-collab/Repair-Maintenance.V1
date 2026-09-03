@@ -51,6 +51,7 @@ interface NavbarProps {
   onManualSync?: () => void;
   onClearAllData: () => void;
   onLoadDemoData: () => void;
+  onRestoreStandardData?: () => void;
   onOpenNewModal: () => void;
   onOpenBackdatedTicketModal?: () => void;
   onOpenImportTicketsModal?: () => void;
@@ -75,6 +76,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onManualSync,
   onClearAllData,
   onLoadDemoData,
+  onRestoreStandardData,
   onOpenNewModal,
   onOpenBackdatedTicketModal,
   onOpenImportTicketsModal,
@@ -627,6 +629,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     )}
 
+                    {onRestoreStandardData && (
+                      <button
+                        onClick={() => {
+                          setIsDataMenuOpen(false);
+                          if (window.confirm("ต้องการรีเซ็ตฐานข้อมูลเป็น 9 ใบงานมาตรฐานและทะเบียน 108 คันของ TNB หรือไม่?")) {
+                            onRestoreStandardData();
+                          }
+                        }}
+                        id="btn-restore-standard-data"
+                        className="w-full text-left px-3 py-2 text-xs text-blue-300 hover:text-white hover:bg-blue-600/30 rounded-lg flex items-center space-x-2.5 transition-colors font-medium border border-blue-500/20 bg-blue-950/20"
+                      >
+                        <RotateCcw className="w-4 h-4 text-blue-400 shrink-0" />
+                        <div>
+                          <div className="font-bold text-blue-300">โหลด 9 ใบงานมาตรฐาน TNB (Standard 9)</div>
+                          <div className="text-[10px] text-blue-100/70">กู้คืน 9 ใบงานและทะเบียน 108 คันตรงตามหน้าโปรแกรม</div>
+                        </div>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         setIsDataMenuOpen(false);
@@ -824,6 +845,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         <span>สำรองข้อมูล / ส่งออก Excel</span>
+                      </button>
+                    )}
+
+                    {onRestoreStandardData && (
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          if (window.confirm("ต้องการรีเซ็ตฐานข้อมูลเป็น 9 ใบงานมาตรฐานและทะเบียน 108 คันของ TNB หรือไม่?")) {
+                            onRestoreStandardData();
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-blue-300 hover:bg-blue-950/40 bg-blue-950/20 rounded-lg flex items-center space-x-2 border border-blue-500/20"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>โหลด 9 ใบงานมาตรฐาน TNB</span>
                       </button>
                     )}
 

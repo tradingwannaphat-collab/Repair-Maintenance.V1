@@ -55,7 +55,9 @@ import {
   getLastKnownServerUpdate 
 } from "./utils/fleetSyncService";
 
-const TICKETS_STORAGE_KEY = "tnb_fleet_clean_tickets_v5";
+import { TNB_STANDARD_9_TICKETS } from "./data/tnbStandardTickets9";
+
+const TICKETS_STORAGE_KEY = "tnb_fleet_clean_tickets_v9";
 const VEHICLES_STORAGE_KEY = "tnb_fleet_clean_vehicles_v108";
 const INVENTORY_STORAGE_KEY = "tnb_fleet_clean_inventory_v5";
 const RECEIPTS_STORAGE_KEY = "tnb_fleet_clean_receipts_v5";
@@ -1026,6 +1028,39 @@ export default function App() {
     }
   };
 
+  // Restore standard 9 tickets & 108 vehicles dataset (รีเซ็ตกลับเป็น 9 ใบงานมาตรฐานและ 108 คัน)
+  const handleRestoreStandard9Tickets = async () => {
+    const fleet108 = getFleet108Vehicles();
+    setTickets(TNB_STANDARD_9_TICKETS);
+    setVehicles(fleet108);
+    setInventory(INITIAL_INVENTORY_ITEMS);
+    setReceipts(INITIAL_GOODS_RECEIPTS);
+    setRequisitions(INITIAL_GOODS_REQUISITIONS);
+    setPmSchedules(INITIAL_PM_SCHEDULES_2026);
+    setDailyInspections(INITIAL_DAILY_INSPECTIONS);
+
+    localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(TNB_STANDARD_9_TICKETS));
+    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(fleet108));
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(INITIAL_INVENTORY_ITEMS));
+    localStorage.setItem(RECEIPTS_STORAGE_KEY, JSON.stringify(INITIAL_GOODS_RECEIPTS));
+    localStorage.setItem(REQUISITIONS_STORAGE_KEY, JSON.stringify(INITIAL_GOODS_REQUISITIONS));
+    localStorage.setItem(PM_SCHEDULES_STORAGE_KEY, JSON.stringify(INITIAL_PM_SCHEDULES_2026));
+    localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(INITIAL_DAILY_INSPECTIONS));
+
+    setIsSyncing(true);
+    await pushServerFleetSync({
+      tickets: TNB_STANDARD_9_TICKETS,
+      vehicles: fleet108,
+      inventory: INITIAL_INVENTORY_ITEMS,
+      receipts: INITIAL_GOODS_RECEIPTS,
+      requisitions: INITIAL_GOODS_REQUISITIONS,
+      pmSchedules: INITIAL_PM_SCHEDULES_2026,
+      dailyInspections: INITIAL_DAILY_INSPECTIONS
+    });
+    setIsSyncing(false);
+    setLastSyncedTime(new Date().toISOString());
+  };
+
   // Load demo sample dataset for testing
   const handleLoadDemoData = async () => {
     if (window.confirm("ต้องการโหลดชุดข้อมูลตัวอย่าง (Demo Data: 8 คัน, แผน PM, ผลตรวจประจำวัน, รายการอะไหล่, ใบแจ้งซ่อม, ใบรับ และใบเบิก) สำหรับการทดลองใช้งานและดูตัวอย่างรายงานสรุปหรือไม่?")) {
@@ -1097,6 +1132,7 @@ export default function App() {
         onManualSync={handleManualSync}
         onClearAllData={handleClearAllData}
         onLoadDemoData={handleLoadDemoData}
+        onRestoreStandardData={handleRestoreStandard9Tickets}
         onOpenNewModal={() => handleOpenNewTicketModal(false)}
         onOpenBackdatedTicketModal={() => handleOpenNewTicketModal(true)}
         onOpenImportTicketsModal={() => setIsTicketImportModalOpen(true)}

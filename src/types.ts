@@ -587,25 +587,93 @@ export interface TireReplacementRecord {
   vehicleModel?: string;
   vehicleType?: VehicleType;
   positionKey: string; // e.g. "FL", "FR", "A2_L_OUT", "A2_L_IN", "A2_R_IN", "A2_R_OUT", "A3_L_OUT", "A3_L_IN", "A3_R_IN", "A3_R_OUT", "SPARE"
+  positionNumber?: number | string; // ตำแหน่ง 1-12 ตามแบบฟอร์ม
   positionNameTh: string;
   replacedDate: string; // YYYY-MM-DD
+  replacedDateTh?: string; // e.g. "5/23/2569"
   replacedMileage: number;
-  tireBrand: string; // e.g. "Bridgestone", "Michelin", "Deestone", "Otani", "Maxxis", "Goodyear"
+  tireBrand: string; // e.g. "Bridgestone", "Michelin", "Deestone", "Otani", "MARVEMAX", "DAYTON"
   tireModel?: string; // e.g. "R156", "X Multi D", "SV402", "OH-301"
   tireSize?: string; // e.g. "11R22.5", "295/80R22.5", "215/75R17.5", "195R14C"
-  tireSerial?: string; // e.g. "SN-88492041"
+  treadPattern?: string; // e.g. "ลายสร้อย", "Lug pattern"
+  tireSerial?: string; // e.g. "B310176031", "SN-88492041"
   dotCode?: string; // e.g. "DOT 3424" (Week 34 Year 2024)
   tireType: 'new' | 'retread' | 'cold_retread' | 'hot_retread' | 'rotate' | 'used' | string; // ยางใหม่ / ยางหล่อดอก / หล่อเย็น / หล่อร้อน / สลับยาง / ยางมือสอง / อื่นๆ
-  initialTreadDepthMm: number; // e.g. 14.0 mm
-  currentTreadDepthMm: number; // e.g. 9.5 mm
+  rimType?: string; // "ใหม่" / "เดิม"
+  initialTreadDepthMm: number; // e.g. 16.0 mm / 14.0 mm
+  currentTreadDepthMm: number; // e.g. 16.0 mm / 2.0 mm
   costPerTire: number; // e.g. 8500
-  supplierOrShop?: string; // e.g. "บริดจสโตน บอย ยางยนต์", "ศูนย์บริการ TNB อู่กลาง"
+  supplierOrShop?: string; // e.g. "ศูนย์บริการ บริดจสโตน บอย ยางยนต์"
   technicianName?: string;
+  driverName?: string; // พขร e.g. "นาย อนุชิต", "นายพุทธิพงษ์"
   reason?: 'worn_out' | 'burst_or_cut' | 'puncture_damage' | 'scheduled_rotation' | 'annual_renewal' | 'uneven_wear' | 'other';
   reasonLabelTh?: string;
+  oldTiresReturnedCount?: number; // นำยางเก่ากลับ (เส้น)
+  swapSource?: string; // "ถอดจากหัว 700-4755"
+  swapTarget?: string; // "นำไปใส่หาง 73-9742 ตำแหน่งที่ 5 และ 6"
+  trailerLicensePlate?: string; // ทะเบียนหางคู่ (ถ้ามี)
   status: 'active' | 'scrapped' | 'spare_stock';
   notes?: string;
   createdAt: string;
+}
+
+export interface BatteryReplacementRecord {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleType?: VehicleType;
+  driverName?: string;
+  replacedDate: string; // YYYY-MM-DD (e.g. 2026-01-05)
+  displayDateTh: string; // e.g. "1/5/2569"
+  previousReplacedDate?: string; // e.g. "มากับรถ" หรือ "8/23/2569"
+  previousBrand?: string; // e.g. "SG"
+  previousModelOrSize?: string; // e.g. "F135L", "N120"
+  previousQuantity?: number; // e.g. 2
+  batteryBrand: string; // e.g. "FB"
+  batteryModelOrSize: string; // e.g. "F135L", "N120=115F511"
+  quantity: number; // e.g. 2
+  cost: number; // e.g. 5400, 8000
+  supplierOrShop: string; // e.g. "ส.รวมยนต์"
+  replacedMileage?: number; // e.g. 633063
+  reason?: string; // e.g. "เกิดจากเสื่อมสภาพเก็บไฟไม่อยู่", "แบตเตอรี่ระเบิด..."
+  status: 'active' | 'replaced' | 'scrapped';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface TireAlertSetting {
+  enableAutoAlert: boolean;
+  criticalThresholdMm: number; // default 2.0 mm (วิกฤต - ห้ามปล่อยรถวิ่งเด็ดขาด)
+  warningThresholdMm: number;  // default 3.5 mm (เฝ้าระวัง - เตรียมสลับ/เปลี่ยน)
+  alertSoundEnabled: boolean;  // เสียงแจ้งเตือนเตือนภัย
+  autoOpenBanner: boolean;     // แสดงแถบเตือนฉุกเฉินเด่นชัด
+  lineNotifyEnabled: boolean;  // จำลองระบบส่งแจ้งเตือนกลุ่มช่าง/ไลน์
+  lastModified?: string;
+}
+
+export interface TireMaintenanceAlert {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  vehicleType: VehicleType;
+  department: string;
+  driverName?: string;
+  currentMileage: number;
+  positionKey: string;
+  positionNameTh: string;
+  treadDepthMm: number;
+  pressurePsi?: number;
+  thresholdMm: number;
+  differenceMm: number; // e.g. -0.6
+  alertLevel: 'critical' | 'warning';
+  wearCondition: TirePositionMeasurement['wearCondition'];
+  riskDescription: string;
+  recommendedAction: string;
+  tireBrand?: string;
+  tireSerial?: string;
+  detectedAt: string;
 }
 
 export interface VehicleTireProfile {
@@ -613,6 +681,7 @@ export interface VehicleTireProfile {
   licensePlate: string;
   measurements: TirePositionMeasurement[];
   replacements: TireReplacementRecord[];
+  battery?: BatteryReplacementRecord;
   lastInspectionDate?: string;
   overallTireStatus: 'safe' | 'warning' | 'critical';
   minTreadDepthMm: number;

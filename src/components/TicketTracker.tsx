@@ -647,7 +647,7 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
                         {t.feedback && (
                           <div className="flex items-center gap-1 text-amber-500 text-[10px] font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                             <Star className="w-3 h-3 fill-amber-500" />
-                            <span>{t.feedback.overallRating}/5 ดาว</span>
+                            <span>{(t.feedback.overallRating || t.feedback.rating || 5)}/5 ดาว</span>
                             <span className="text-slate-400 font-normal truncate">({t.feedback.comment})</span>
                           </div>
                         )}

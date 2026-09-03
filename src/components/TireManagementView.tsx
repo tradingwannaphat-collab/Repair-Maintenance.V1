@@ -29,15 +29,30 @@ import {
   Hash,
   X,
   Check,
-  Tag
+  Tag,
+  BatteryCharging
 } from "lucide-react";
 import { 
   VehicleRecord, 
   RepairTicket, 
   TireReplacementRecord, 
   TirePositionMeasurement, 
-  VehicleType 
+  BatteryReplacementRecord,
+  VehicleType,
+  TireAlertSetting,
+  TireMaintenanceAlert
 } from "../types";
+import { 
+  loadTireAlertSettings, 
+  saveTireAlertSettings, 
+  calculateFleetTireAlerts, 
+  playTireAlertSound, 
+  DEFAULT_TIRE_ALERT_SETTINGS 
+} from "../data/tireAlertConfig";
+import { TireAlertBanner } from "./TireAlertBanner";
+import { TireAlertSettingsModal } from "./TireAlertSettingsModal";
+import { TireAlertDispatchModal } from "./TireAlertDispatchModal";
+import { TireMaintenanceAlertHubTab } from "./TireMaintenanceAlertHubTab";
 import { 
   TIRE_BRANDS, 
   TIRE_SIZES, 
@@ -48,6 +63,13 @@ import {
   getVehicleTireMeasurements 
 } from "../data/tireManagementData";
 import { 
+  INITIAL_BATTERY_REPLACEMENTS,
+  getVehicleBatteryRecord
+} from "../data/batteryManagementData";
+import { BatteryManagementViewTab } from "./BatteryManagementViewTab";
+import { VehicleChassisTireLayout } from "./VehicleChassisTireLayout";
+import { FleetTireTreadDepthSummaryTab } from "./FleetTireTreadDepthSummaryTab";
+import { 
   getWheelPositionsForVehicleType, 
   CRITICAL_TREAD_DEPTH_MM, 
   WARNING_TREAD_DEPTH_MM, 
@@ -56,7 +78,27 @@ import {
 } from "../data/tireInspectionConfig";
 import { VEHICLE_TYPE_LABELS } from "../data/categories";
 
-const TIRE_REPLACEMENTS_STORAGE_KEY = "tnb_fleet_tire_replacements_v1";
+const TIRE_REPLACEMENTS_STORAGE_KEY = "tnb_fleet_tire_replacements_v2";
+const BATTERY_REPLACEMENTS_STORAGE_KEY = "tnb_fleet_battery_replacements_v1";
+
+export const normalizePlate = (p?: string): string => (p || "").replace(/[^0-9a-zA-Zก-๙]/g, "");
+
+export const isPlateMatch = (recordPlate: string, vehicle?: VehicleRecord): boolean => {
+  if (!recordPlate || !vehicle) return false;
+  const p1 = normalizePlate(recordPlate);
+  const p2 = normalizePlate(vehicle.licensePlate);
+  if (p1 === p2) return true;
+  if (vehicle.oldLicensePlate && normalizePlate(vehicle.oldLicensePlate) === p1) return true;
+  
+  // Strip non-digits
+  const d1 = recordPlate.replace(/\D/g, "");
+  const d2 = (vehicle.licensePlate || "").replace(/\D/g, "");
+  if (d1 && d2) {
+    if (d1 === d2) return true;
+    if (d1.length >= 4 && d2.length >= 4 && d1.slice(-4) === d2.slice(-4)) return true;
+  }
+  return false;
+};
 
 interface TireManagementViewProps {
   vehicles: VehicleRecord[];
@@ -77,7 +119,12 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   const [replacements, setReplacements] = useState<TireReplacementRecord[]>(() => {
     try {
       const saved = localStorage.getItem(TIRE_REPLACEMENTS_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_TIRE_REPLACEMENTS.length) {
+          return parsed;
+        }
+      }
     } catch (e) {
       console.error("Error reading tire replacements storage:", e);
     }
@@ -94,14 +141,80 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
     }
   };
 
+  // Battery Replacements State
+  const [batteryReplacements, setBatteryReplacements] = useState<BatteryReplacementRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(BATTERY_REPLACEMENTS_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error reading battery replacements storage:", e);
+    }
+    return INITIAL_BATTERY_REPLACEMENTS;
+  });
+
+  const saveBatteryReplacements = (updated: BatteryReplacementRecord[]) => {
+    setBatteryReplacements(updated);
+    try {
+      localStorage.setItem(BATTERY_REPLACEMENTS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Error saving battery replacements storage:", e);
+    }
+  };
+
   // Selected vehicle for Chassis view
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(vehicles[0]?.id || "");
   const selectedVehicle = useMemo(() => {
     return vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
   }, [vehicles, selectedVehicleId]);
 
-  // Main Sub-Tab: 'chassis_inspection' | 'replacement_history' | 'fleet_tire_matrix'
-  const [activeSubTab, setActiveSubTab] = useState<"chassis_inspection" | "replacement_history" | "fleet_tire_matrix">("chassis_inspection");
+  // Battery record for currently selected vehicle
+  const selectedVehicleBattery = useMemo(() => {
+    if (!selectedVehicle) return undefined;
+    return getVehicleBatteryRecord(selectedVehicle.licensePlate, batteryReplacements) ||
+      batteryReplacements.find(
+        (b) => b.vehicleId === selectedVehicle.id || isPlateMatch(b.licensePlate, selectedVehicle)
+      );
+  }, [selectedVehicle, batteryReplacements]);
+
+  // Chassis diagram view mode: 'chassis_layout' (true visual truck layout) vs 'grid_cards'
+  const [chassisViewMode, setChassisViewMode] = useState<"chassis_layout" | "grid_cards">("chassis_layout");
+
+  // Main Sub-Tab: 'chassis_inspection' | 'fleet_tire_matrix' | 'alerts_hub' | 'replacement_history' | 'battery_history'
+  const [activeSubTab, setActiveSubTab] = useState<
+    "chassis_inspection" | "fleet_tire_matrix" | "alerts_hub" | "replacement_history" | "battery_history"
+  >("chassis_inspection");
+
+  // Automated Alert System State
+  const [alertSettings, setAlertSettings] = useState<TireAlertSetting>(loadTireAlertSettings);
+  const [isAlertSettingsModalOpen, setIsAlertSettingsModalOpen] = useState<boolean>(false);
+  const [isAlertDispatchModalOpen, setIsAlertDispatchModalOpen] = useState<boolean>(false);
+
+  const handleSaveAlertSettings = (newSettings: TireAlertSetting) => {
+    setAlertSettings(newSettings);
+    saveTireAlertSettings(newSettings);
+  };
+
+  // Fleet-wide tire alerts calculated dynamically based on configured thresholds
+  const fleetAlerts: TireMaintenanceAlert[] = useMemo(() => {
+    return calculateFleetTireAlerts(vehicles, replacements, alertSettings);
+  }, [vehicles, replacements, alertSettings]);
+
+  const criticalAlertsCount = useMemo(() => {
+    return fleetAlerts.filter((a) => a.alertLevel === "critical").length;
+  }, [fleetAlerts]);
+
+  const warningAlertsCount = useMemo(() => {
+    return fleetAlerts.filter((a) => a.alertLevel === "warning").length;
+  }, [fleetAlerts]);
+
+  // Audio alert chime if enabled and critical alert exists
+  const hasPlayedAudioRef = React.useRef(false);
+  React.useEffect(() => {
+    if (alertSettings.enableAutoAlert && alertSettings.alertSoundEnabled && criticalAlertsCount > 0 && !hasPlayedAudioRef.current) {
+      playTireAlertSound("critical");
+      hasPlayedAudioRef.current = true;
+    }
+  }, [alertSettings.enableAutoAlert, alertSettings.alertSoundEnabled, criticalAlertsCount]);
 
   // Filter / Search for vehicles
   const [vehicleSearch, setVehicleSearch] = useState<string>("");
@@ -191,8 +304,8 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
     currentMeasurements.forEach((m) => {
       totalD += m.treadDepthMm;
       if (m.treadDepthMm < minD) minD = m.treadDepthMm;
-      if (m.alertLevel === "critical") critical++;
-      else if (m.alertLevel === "warning") warning++;
+      if (m.alertLevel === "critical" || m.treadDepthMm < alertSettings.criticalThresholdMm) critical++;
+      else if (m.alertLevel === "warning" || m.treadDepthMm <= alertSettings.warningThresholdMm) warning++;
       else safe++;
     });
 
@@ -205,7 +318,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
       minTreadDepth: minD === Infinity ? 0 : minD,
       avgTreadDepth: Number(avgD)
     };
-  }, [currentMeasurements]);
+  }, [currentMeasurements, alertSettings]);
 
   // Fleet-wide calculations
   const fleetStats = useMemo(() => {
@@ -219,8 +332,8 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
       const ms = getVehicleTireMeasurements(v, replacements);
       totalTires += ms.length;
       ms.forEach((m) => {
-        if (m.alertLevel === "critical") totalCritical++;
-        else if (m.alertLevel === "warning") totalWarning++;
+        if (m.alertLevel === "critical" || m.treadDepthMm < alertSettings.criticalThresholdMm) totalCritical++;
+        else if (m.alertLevel === "warning" || m.treadDepthMm <= alertSettings.warningThresholdMm) totalWarning++;
         else totalSafe++;
       });
     });
@@ -238,7 +351,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
       totalReplacementsCount: replacements.length,
       totalCost
     };
-  }, [vehicles, replacements]);
+  }, [vehicles, replacements, alertSettings]);
 
   // Filtered vehicles list for left drawer/picker
   const filteredVehicles = useMemo(() => {
@@ -545,7 +658,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
           {/* Card 2: Critical Tires */}
           <div className="bg-rose-950/40 p-3 rounded-xl border border-rose-800/40">
             <div className="flex items-center justify-between text-rose-300 text-xs font-bold">
-              <span>🔴 วิกฤต ห้ามวิ่ง (&lt; 2.0 mm)</span>
+              <span>🔴 วิกฤต ห้ามวิ่ง (&lt; {alertSettings.criticalThresholdMm} mm)</span>
               <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
             </div>
             <div className="text-xl sm:text-2xl font-black text-rose-400 mt-1 font-mono">
@@ -557,7 +670,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
           {/* Card 3: Warning Tires */}
           <div className="bg-amber-950/40 p-3 rounded-xl border border-amber-800/40">
             <div className="flex items-center justify-between text-amber-300 text-xs font-bold">
-              <span>🟡 เฝ้าระวัง (2.0 - 3.5 mm)</span>
+              <span>🟡 เฝ้าระวัง ({alertSettings.criticalThresholdMm} - {alertSettings.warningThresholdMm} mm)</span>
               <Clock className="w-3.5 h-3.5 text-amber-400" />
             </div>
             <div className="text-xl sm:text-2xl font-black text-amber-400 mt-1 font-mono">
@@ -569,7 +682,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
           {/* Card 4: Safe Tires */}
           <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-800/40">
             <div className="flex items-center justify-between text-emerald-300 text-xs font-bold">
-              <span>🟢 ดอกยางปกติ (&gt; 3.5 mm)</span>
+              <span>🟢 ดอกยางปกติ (&gt; {alertSettings.warningThresholdMm} mm)</span>
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             </div>
             <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 font-mono">
@@ -602,7 +715,36 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
             }`}
           >
             <Truck className="w-4 h-4 text-amber-300" />
-            <span>1. ผังตำแหน่งยาง & ตรวจวัดดอกยางรายคัน (Chassis & Wheel Layout)</span>
+            <span>1. ผังตำแหน่งยาง & แบตเตอรี่รอบคัน (Chassis Diagram)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab("fleet_tire_matrix")}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === "fleet_tire_matrix"
+                ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25 ring-2 ring-cyan-400/40"
+                : "bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <Gauge className="w-4 h-4 text-cyan-300" />
+            <span>2. สรุปความลึกของยางทั้งกองยาน (Fleet Summary & Layout)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab("alerts_hub")}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 relative ${
+              activeSubTab === "alerts_hub"
+                ? "bg-rose-600 text-white shadow-md shadow-rose-500/25 ring-2 ring-rose-400/40"
+                : fleetAlerts.length > 0
+                ? "bg-rose-950/60 text-rose-200 hover:bg-rose-900 border border-rose-800/80"
+                : "bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <ShieldAlert className={`w-4 h-4 ${criticalAlertsCount > 0 ? "text-rose-400 animate-pulse" : "text-amber-400"}`} />
+            <span>3. 🚨 ศูนย์แจ้งเตือนเปลี่ยนยาง ({fleetAlerts.length})</span>
+            {criticalAlertsCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping absolute -top-1 -right-1" />
+            )}
           </button>
 
           <button
@@ -614,10 +756,37 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
             }`}
           >
             <Clock className="w-4 h-4 text-emerald-300" />
-            <span>2. ประวัติการเปลี่ยนยางทั้งหมด (Replacement Log - {replacements.length})</span>
+            <span>4. ประวัติการเปลี่ยนยางทั้งหมด ({replacements.length} รายการ)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab("battery_history")}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === "battery_history"
+                ? "bg-amber-600 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-400/40"
+                : "bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <BatteryCharging className="w-4 h-4 text-amber-300" />
+            <span>5. ประวัติการเปลี่ยนแบตเตอรี่ ({batteryReplacements.length} คัน)</span>
           </button>
         </div>
       </div>
+
+      {/* Automated Maintenance Alert Banner */}
+      <TireAlertBanner
+        alerts={fleetAlerts}
+        settings={alertSettings}
+        onOpenSettings={() => setIsAlertSettingsModalOpen(true)}
+        onOpenDispatch={() => setIsAlertDispatchModalOpen(true)}
+        onOpenAlertHub={() => setActiveSubTab("alerts_hub")}
+        onSelectVehicleId={(vId) => {
+          setSelectedVehicleId(vId);
+          setActiveSubTab("chassis_inspection");
+        }}
+        onRequestRepairForVehicle={onRequestRepairForVehicle}
+        selectedVehicleId={selectedVehicleId}
+      />
 
       {/* ======================================================== */}
       {/* 2. SUBTAB 1: CHASSIS & WHEEL POSITION INSPECTION VIEW    */}
@@ -797,8 +966,58 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
               </div>
             </div>
 
-            {/* Visual Chassis & Tire Diagram Container */}
-            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-5 sm:p-6 text-white shadow-md relative overflow-hidden">
+            {/* View Mode Switcher: Chassis Layout vs Grid Cards */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-900 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-sm">
+              <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                <span className="text-xs text-slate-400 font-medium pl-2 hidden sm:inline">รูปแบบ:</span>
+                <button
+                  type="button"
+                  onClick={() => setChassisViewMode("chassis_layout")}
+                  className={`flex-1 sm:flex-initial px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    chassisViewMode === "chassis_layout"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-blue-400/50"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">ผังโครงสร้างตัวรถ (Chassis Layout)</span>
+                  <span className="sm:hidden">ผังตัวรถเสมือนจริง</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChassisViewMode("grid_cards")}
+                  className={`flex-1 sm:flex-initial px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    chassisViewMode === "grid_cards"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-blue-400/50"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">การ์ดแจกแจงล้อ (Card Grid)</span>
+                  <span className="sm:hidden">การ์ดแยกตามล้อ</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-400 pr-2 hidden md:block">
+                รถคันนี้: <strong className="text-white font-mono font-bold">{selectedVehicle.licensePlate}</strong>
+              </div>
+            </div>
+
+            {/* If Chassis Layout Mode: Render VehicleChassisTireLayout */}
+            {chassisViewMode === "chassis_layout" ? (
+              <VehicleChassisTireLayout
+                vehicle={selectedVehicle}
+                measurements={currentMeasurements}
+                replacements={replacements}
+                batteryRecord={selectedVehicleBattery}
+                criticalThresholdMm={alertSettings.criticalThresholdMm}
+                warningThresholdMm={alertSettings.warningThresholdMm}
+                onQuickMeasurement={handleOpenQuickMeasurement}
+                onReplaceTire={handleOpenReplaceModal}
+              />
+            ) : (
+              /* Visual Chassis & Tire Diagram Container (Grid Cards) */
+              <div className="bg-slate-900 rounded-2xl border border-slate-800 p-5 sm:p-6 text-white shadow-md relative overflow-hidden">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-5">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
@@ -828,6 +1047,98 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* Dedicated Battery Compartment for this vehicle */}
+              {(() => {
+                const currentVehicleBattery = getVehicleBatteryRecord(selectedVehicle.licensePlate, batteryReplacements) ||
+                  batteryReplacements.find(
+                    (b) => b.vehicleId === selectedVehicle.id || isPlateMatch(b.licensePlate, selectedVehicle)
+                  );
+
+                return (
+                  <div className="mb-5 max-w-3xl mx-auto">
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-800/90 via-slate-800 to-slate-800/90 border border-amber-500/40 shadow-lg relative overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40 shrink-0">
+                            <BatteryCharging className="w-6 h-6" />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-amber-400 font-mono tracking-wide uppercase">
+                                🔋 กล่องแบตเตอรี่ประจำรถ (BATTERY COMPARTMENT)
+                              </span>
+                              {currentVehicleBattery ? (
+                                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/40 flex items-center gap-1">
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>มีบันทึกเปลี่ยนในระบบ (Doc 2)</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-medium">
+                                  แบตเตอรี่มาตรฐานประจำรถ (24V)
+                                </span>
+                              )}
+                            </div>
+
+                            {currentVehicleBattery ? (
+                              <div className="mt-1 space-y-1 text-xs">
+                                <div className="text-white font-bold text-sm flex items-center gap-2">
+                                  <span>{currentVehicleBattery.quantity || 2} ลูก x {currentVehicleBattery.batteryBrand} {currentVehicleBattery.batteryModelOrSize}</span>
+                                  <span className="text-xs text-amber-400 font-normal">฿{(currentVehicleBattery.cost || 0).toLocaleString()} บ.</span>
+                                </div>
+                                <div className="text-slate-300 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                  <span>วันที่เปลี่ยน: <strong className="text-white font-mono">{currentVehicleBattery.displayDateTh || currentVehicleBattery.replacedDate}</strong></span>
+                                  <span>ร้าน: <strong className="text-white">{currentVehicleBattery.supplierOrShop}</strong></span>
+                                  {currentVehicleBattery.replacedMileage ? (
+                                    <span>ไมล์: <strong className="text-white font-mono">{currentVehicleBattery.replacedMileage.toLocaleString()} กม.</strong></span>
+                                  ) : null}
+                                  {currentVehicleBattery.driverName && (
+                                    <span>พขร: <strong className="text-white">{currentVehicleBattery.driverName}</strong></span>
+                                  )}
+                                </div>
+                                {currentVehicleBattery.reason && (
+                                  <div className="text-[10px] text-amber-300/90 italic">
+                                    สาเหตุ: {currentVehicleBattery.reason}
+                                  </div>
+                                )}
+                                {currentVehicleBattery.previousBrand && (
+                                  <div className="text-[10px] text-slate-400">
+                                    แบตเตอรี่เดิม: {currentVehicleBattery.previousBrand} {currentVehicleBattery.previousModelOrSize} ({currentVehicleBattery.previousReplacedDate || "มากับรถ"})
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-slate-400 text-xs mt-1">
+                                ระบบไฟฟ้า 24V (แบตเตอรี่ 12V 2 ลูก) ยังไม่มีประวัติการเปลี่ยนแบตเตอรี่เฉพาะคันนี้
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex sm:flex-col items-center justify-end gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setActiveSubTab("battery_history")}
+                            className="px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            <span>ดูประวัติทั้งหมด</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSubTab("battery_history")}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>+ บันทึกเปลี่ยนแบต</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Chassis Visual Layout Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
                 {currentMeasurements.map((m) => {
@@ -836,9 +1147,15 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                   const isWarning = m.alertLevel === "warning";
                   const isSafe = m.alertLevel === "safe";
 
-                  // Find latest replacement for this position
+                  // Find latest replacement for this position matching vehicle licensePlate & positionKey / positionNumber
                   const latestRep = replacements
-                    .filter((r) => (r.vehicleId === selectedVehicle.id || r.licensePlate === selectedVehicle.licensePlate) && r.positionKey === m.positionKey)
+                    .filter((r) => {
+                      const plateMatches = r.vehicleId === selectedVehicle.id || isPlateMatch(r.licensePlate, selectedVehicle);
+                      if (!plateMatches) return false;
+                      if (r.positionKey && r.positionKey === m.positionKey) return true;
+                      if (r.positionNumber && cfg?.positionNumber && String(r.positionNumber) === String(cfg.positionNumber)) return true;
+                      return false;
+                    })
                     .sort((a, b) => new Date(b.replacedDate).getTime() - new Date(a.replacedDate).getTime())[0];
 
                   const depthPct = Math.min(100, Math.max(0, Math.round((m.treadDepthMm / NEW_TIRE_DEPTH_MM) * 100)));
@@ -847,7 +1164,13 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                     <div
                       key={m.positionKey}
                       className={`p-4 rounded-xl border transition-all ${
-                        isCritical
+                        latestRep
+                          ? isCritical
+                            ? "bg-rose-950/40 border-rose-500 shadow-lg shadow-rose-950/60 ring-2 ring-emerald-400/80"
+                            : isWarning
+                            ? "bg-amber-950/40 border-amber-500 shadow-lg shadow-amber-950/60 ring-2 ring-emerald-400/80"
+                            : "bg-slate-800/95 border-emerald-500/70 ring-2 ring-emerald-400/60 shadow-lg shadow-emerald-950/30"
+                          : isCritical
                           ? "bg-rose-950/30 border-rose-600/80 shadow-md shadow-rose-950/50"
                           : isWarning
                           ? "bg-amber-950/30 border-amber-500/70 shadow-md shadow-amber-950/50"
@@ -865,21 +1188,29 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                           </div>
                           {cfg && (
                             <div className="text-[10px] text-slate-400 mt-0.5">
-                              เพลา {cfg.axle > 0 ? cfg.axle : 'อะไหล่'} • {cfg.side === 'left' ? 'ฝั่งซ้าย' : 'ฝั่งขวา'} {cfg.isDual ? '(ล้อคู่)' : ''}
+                              เพลา {cfg.axle > 0 ? cfg.axle : 'อะไหล่'} • {cfg.side === 'left' ? 'ฝั่งซ้าย' : 'ฝั่งขวา'} {cfg.isDual ? '(ล้อคู่)' : ''} {cfg.positionNumber ? `• ตำแหน่งที่ #${cfg.positionNumber}` : ''}
                             </div>
                           )}
                         </div>
 
-                        {/* Status Chip */}
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold border whitespace-nowrap ${
-                          isCritical
-                            ? "bg-rose-500/20 text-rose-300 border-rose-500/50"
-                            : isWarning
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                        }`}>
-                          {isCritical ? "🔴 วิกฤต" : isWarning ? "🟡 เฝ้าระวัง" : "🟢 ปกติ"}
-                        </span>
+                        {/* Status Chip & Replacement Indicator */}
+                        <div className="flex items-center gap-1.5">
+                          {latestRep && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>มีประวัติเปลี่ยน (Doc 1)</span>
+                            </span>
+                          )}
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold border whitespace-nowrap ${
+                            isCritical
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/50"
+                              : isWarning
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                          }`}>
+                            {isCritical ? "🔴 วิกฤต" : isWarning ? "🟡 เฝ้าระวัง" : "🟢 ปกติ"}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Main Tread Depth Display */}
@@ -922,22 +1253,56 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                       </div>
 
                       {/* Tire Installation & Replacement Details */}
-                      <div className="mt-3 pt-2.5 border-t border-slate-700/80 text-[11px] space-y-1">
+                      <div className="mt-3 pt-2.5 border-t border-slate-700/80 text-[11px] space-y-1.5">
                         {latestRep ? (
                           <>
-                            <div className="flex items-center justify-between text-slate-300">
-                              <span>ยี่ห้อ: <strong className="text-white font-bold">{latestRep.tireBrand} {latestRep.tireModel || ''}</strong></span>
-                              <span className="text-slate-400 font-mono">{latestRep.dotCode || 'DOT'}</span>
+                            <div className="flex items-center justify-between text-slate-200">
+                              <span>
+                                ยี่ห้อ: <strong className="text-white font-bold">{latestRep.tireBrand} {latestRep.tireModel || ''}</strong>
+                                {latestRep.treadPattern && (
+                                  <span className="text-amber-300 ml-1">({latestRep.treadPattern})</span>
+                                )}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
+                                latestRep.tireType === "new"
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                  : "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                              }`}>
+                                {getTireTypeLabel(latestRep.tireType)}
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>เปลี่ยนเมื่อ: <strong className="text-slate-300 font-mono">{latestRep.replacedDate}</strong></span>
-                              <span>ไมล์ที่เปลี่ยน: <strong className="text-slate-300 font-mono">{latestRep.replacedMileage.toLocaleString()} กม.</strong></span>
+
+                            <div className="flex items-center justify-between text-slate-300 text-[11px]">
+                              <span>เปลี่ยนเมื่อ: <strong className="text-white font-mono">{latestRep.replacedDateTh || latestRep.replacedDate}</strong></span>
+                              {latestRep.replacedMileage ? (
+                                <span>ไมล์: <strong className="text-white font-mono">{latestRep.replacedMileage.toLocaleString()} กม.</strong></span>
+                              ) : null}
                             </div>
-                            {latestRep.tireSerial && (
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                ซีเรียล: {latestRep.tireSerial}
+
+                            {latestRep.driverName && (
+                              <div className="text-[11px] text-slate-300">
+                                พขร: <strong className="text-white">{latestRep.driverName}</strong>
                               </div>
                             )}
+
+                            {latestRep.tireSerial && (
+                              <div className="text-[10px] text-slate-300 font-mono bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 flex items-center justify-between">
+                                <span>SN: {latestRep.tireSerial}</span>
+                                {latestRep.rimType && <span className="text-slate-400">{latestRep.rimType}</span>}
+                              </div>
+                            )}
+
+                            {latestRep.notes && (
+                              <div className="text-[10px] text-amber-200 bg-amber-950/50 p-1.5 rounded border border-amber-800/40 leading-snug">
+                                {latestRep.notes}
+                              </div>
+                            )}
+
+                            {latestRep.oldTiresReturnedCount ? (
+                              <div className="text-[10px] text-slate-400">
+                                ยางเก่าคืน: <strong className="text-slate-200">{latestRep.oldTiresReturnedCount} เส้น</strong>
+                              </div>
+                            ) : null}
                           </>
                         ) : (
                           <div className="text-slate-400 text-[11px] italic">
@@ -979,6 +1344,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                 </div>
               </div>
             </div>
+            )}
 
             {/* Detailed Table Breakdown for this vehicle */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1007,10 +1373,17 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {currentMeasurements.map((m) => {
+                      const cfg = currentPositionsConfig.find((c) => c.key === m.positionKey);
                       const isCritical = m.alertLevel === "critical";
                       const isWarning = m.alertLevel === "warning";
                       const latestRep = replacements
-                        .filter((r) => (r.vehicleId === selectedVehicle.id || r.licensePlate === selectedVehicle.licensePlate) && r.positionKey === m.positionKey)
+                        .filter((r) => {
+                          const plateMatches = r.vehicleId === selectedVehicle.id || isPlateMatch(r.licensePlate, selectedVehicle);
+                          if (!plateMatches) return false;
+                          if (r.positionKey && r.positionKey === m.positionKey) return true;
+                          if (r.positionNumber && cfg?.positionNumber && String(r.positionNumber) === String(cfg.positionNumber)) return true;
+                          return false;
+                        })
                         .sort((a, b) => new Date(b.replacedDate).getTime() - new Date(a.replacedDate).getTime())[0];
 
                       return (
@@ -1019,7 +1392,10 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                             {m.positionKey}
                           </td>
                           <td className="py-3 px-4 font-semibold text-slate-800 border-r border-slate-100">
-                            {m.positionNameTh}
+                            <div>{m.positionNameTh}</div>
+                            {cfg?.positionNumber && (
+                              <div className="text-[10px] text-slate-400">ตำแหน่ง #{cfg.positionNumber}</div>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold border-r border-slate-100">
                             <span className={isCritical ? "text-rose-600 font-black text-sm" : isWarning ? "text-amber-600 font-bold" : "text-emerald-600 font-bold"}>
@@ -1043,8 +1419,23 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                           <td className="py-3 px-4 text-slate-600 text-xs border-r border-slate-100">
                             {latestRep ? (
                               <div>
-                                <span className="font-bold text-slate-800">{latestRep.tireBrand} {latestRep.tireModel}</span>
-                                <span className="text-slate-500 text-[11px] ml-2">({latestRep.replacedDate}) • ฿{latestRep.costPerTire.toLocaleString()}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-slate-800">{latestRep.tireBrand} {latestRep.tireModel}</span>
+                                  {latestRep.treadPattern && (
+                                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                      ลาย{latestRep.treadPattern}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200 font-semibold">
+                                    Doc 1
+                                  </span>
+                                </div>
+                                <div className="text-slate-500 text-[11px] mt-0.5">
+                                  ({latestRep.replacedDateTh || latestRep.replacedDate}) • ฿{latestRep.costPerTire.toLocaleString()} • {latestRep.replacedMileage?.toLocaleString()} กม.
+                                </div>
+                                {latestRep.driverName && (
+                                  <div className="text-[10px] text-slate-500">พขร: {latestRep.driverName}</div>
+                                )}
                               </div>
                             ) : (
                               <span className="text-slate-400 text-[11px]">ยางมาตรฐาน (ยังไม่มีประวัติเปลี่ยนย่อย)</span>
@@ -1067,6 +1458,44 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 2. SUBTAB: FLEET TREAD DEPTH SUMMARY MATRIX & LAYOUT    */}
+      {/* ======================================================== */}
+      {activeSubTab === "fleet_tire_matrix" && (
+        <FleetTireTreadDepthSummaryTab
+          vehicles={vehicles}
+          replacements={replacements}
+          batteryReplacements={batteryReplacements}
+          selectedVehicleId={selectedVehicleId}
+          criticalThresholdMm={alertSettings.criticalThresholdMm}
+          warningThresholdMm={alertSettings.warningThresholdMm}
+          onSelectVehicleId={(id) => setSelectedVehicleId(id)}
+          onQuickMeasurement={handleOpenQuickMeasurement}
+          onReplaceTire={handleOpenReplaceModal}
+          onRequestRepairForVehicle={onRequestRepairForVehicle}
+        />
+      )}
+
+      {/* ======================================================== */}
+      {/* 3. SUBTAB: AUTOMATED PREVENTIVE TIRE ALERT HUB           */}
+      {/* ======================================================== */}
+      {activeSubTab === "alerts_hub" && (
+        <TireMaintenanceAlertHubTab
+          alerts={fleetAlerts}
+          settings={alertSettings}
+          vehicles={vehicles}
+          onOpenSettings={() => setIsAlertSettingsModalOpen(true)}
+          onOpenDispatch={() => setIsAlertDispatchModalOpen(true)}
+          onSelectVehicleForDiagram={(vId) => {
+            setSelectedVehicleId(vId);
+            setActiveSubTab("chassis_inspection");
+          }}
+          onQuickMeasurement={handleOpenQuickMeasurement}
+          onReplaceTire={handleOpenReplaceModal}
+          onRequestRepairForVehicle={onRequestRepairForVehicle}
+        />
       )}
 
       {/* ======================================================== */}
@@ -1180,18 +1609,37 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                           {idx + 1}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-700 font-semibold border-r border-slate-100">
-                          {rec.replacedDate}
+                          <div>{rec.replacedDateTh || rec.replacedDate}</div>
+                          {rec.replacedDateTh && (
+                            <div className="text-[10px] text-slate-400 font-sans">{rec.replacedDate}</div>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-bold text-slate-900 font-mono border-r border-slate-100">
-                          {rec.licensePlate}
+                          <div>{rec.licensePlate}</div>
+                          {rec.driverName && (
+                            <div className="text-[10px] text-slate-500 font-normal font-sans">พขร: {rec.driverName}</div>
+                          )}
                         </td>
                         <td className="py-3 px-3 border-r border-slate-100">
                           <span className="font-bold text-slate-800">{rec.positionNameTh}</span>
                           <span className="text-[10px] text-slate-400 ml-1 font-mono">({rec.positionKey})</span>
+                          {rec.positionNumber && (
+                            <div className="text-[10px] text-slate-400">ตำแหน่ง #{rec.positionNumber}</div>
+                          )}
                         </td>
                         <td className="py-3 px-4 border-r border-slate-100">
-                          <div className="font-bold text-slate-900">{rec.tireBrand} {rec.tireModel}</div>
+                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <span>{rec.tireBrand} {rec.tireModel}</span>
+                            {rec.treadPattern && (
+                              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                ลาย{rec.treadPattern}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-500">{rec.tireSize}</div>
+                          {rec.rimType && (
+                            <div className="text-[10px] text-slate-400">{rec.rimType}</div>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-600 text-[11px] border-r border-slate-100">
                           <div>{rec.dotCode || '-'}</div>
@@ -1223,16 +1671,31 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                         <td className="py-3 px-4 text-slate-600 text-xs border-r border-slate-100">
                           <div className="font-medium text-slate-800">{rec.reasonLabelTh || rec.reason}</div>
                           <div className="text-[11px] text-slate-500 mt-0.5">{rec.supplierOrShop} • {rec.technicianName}</div>
-                          {rec.notes && <div className="text-[10px] text-slate-400 italic mt-0.5">{rec.notes}</div>}
+                          {rec.notes && <div className="text-[10px] text-amber-800 font-medium mt-0.5 bg-amber-50 px-1 py-0.5 rounded">{rec.notes}</div>}
                         </td>
                         <td className="py-3 px-3 text-center">
-                          <button
-                            onClick={() => handleDeleteReplacement(rec.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                            title="ลบรายการ"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => {
+                                const targetVeh = vehicles.find((v) => isPlateMatch(rec.licensePlate, v));
+                                if (targetVeh) {
+                                  setSelectedVehicleId(targetVeh.id);
+                                  setActiveSubTab("chassis_inspection");
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                              title="เปิดดูผังรถคันนี้"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteReplacement(rec.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                              title="ลบรายการ"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1242,6 +1705,22 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 3.1 SUBTAB 3: BATTERY REPLACEMENT HISTORY TAB (DOC 2)    */}
+      {/* ======================================================== */}
+      {activeSubTab === "battery_history" && (
+        <BatteryManagementViewTab
+          vehicles={vehicles}
+          batteryReplacements={batteryReplacements}
+          onSaveBatteryReplacements={saveBatteryReplacements}
+          onSelectVehicleForDiagram={(vehId) => {
+            setSelectedVehicleId(vehId);
+            setActiveSubTab("chassis_inspection");
+          }}
+          onRequestRepairForVehicle={onRequestRepairForVehicle}
+        />
       )}
 
       {/* ======================================================== */}
@@ -1744,6 +2223,23 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Automated Alert System: Settings Modal */}
+      <TireAlertSettingsModal
+        isOpen={isAlertSettingsModalOpen}
+        onClose={() => setIsAlertSettingsModalOpen(false)}
+        settings={alertSettings}
+        onSave={handleSaveAlertSettings}
+      />
+
+      {/* Automated Alert System: Dispatch to LINE / Maintenance Modal */}
+      <TireAlertDispatchModal
+        isOpen={isAlertDispatchModalOpen}
+        onClose={() => setIsAlertDispatchModalOpen(false)}
+        alerts={fleetAlerts}
+        settings={alertSettings}
+        onRequestRepairForVehicle={onRequestRepairForVehicle}
+      />
     </div>
   );
 };

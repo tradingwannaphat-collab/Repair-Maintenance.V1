@@ -15,6 +15,7 @@ export interface WheelPositionConfig {
   axle: number; // 1 = Front, 2 = Drive/Middle, 3 = Rear, 4+ = Trailer
   side: 'left' | 'right';
   isDual: boolean; // ล้อคู่หรือไม่
+  positionNumber?: number; // ลำดับตำแหน่งล้อ เช่น 1-10 หรือ 1-12
 }
 
 export function getWheelPositionsForVehicleType(vehicleType: VehicleType): WheelPositionConfig[] {
@@ -27,51 +28,51 @@ export function getWheelPositionsForVehicleType(vehicleType: VehicleType): Wheel
     case "forklift":
     case "motorcycle":
       return [
-        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false },
-        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false },
-        { key: "RL", nameTh: "หลังซ้าย (RL)", nameEn: "Rear Left", axle: 2, side: "left", isDual: false },
-        { key: "RR", nameTh: "หลังขวา (RR)", nameEn: "Rear Right", axle: 2, side: "right", isDual: false },
+        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false, positionNumber: 1 },
+        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false, positionNumber: 2 },
+        { key: "RL", nameTh: "หลังซ้าย (RL)", nameEn: "Rear Left", axle: 2, side: "left", isDual: false, positionNumber: 3 },
+        { key: "RR", nameTh: "หลังขวา (RR)", nameEn: "Rear Right", axle: 2, side: "right", isDual: false, positionNumber: 4 },
         { key: "SPARE", nameTh: "ยางอะไหล่ (Spare)", nameEn: "Spare Tire", axle: 0, side: "left", isDual: false }
       ];
 
     case "jumbo_4w":
       return [
-        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false },
-        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false },
-        { key: "RL_OUT", nameTh: "หลังซ้ายนอก (RL-Out)", nameEn: "Rear Left Outer", axle: 2, side: "left", isDual: true },
-        { key: "RL_IN", nameTh: "หลังซ้ายใน (RL-In)", nameEn: "Rear Left Inner", axle: 2, side: "left", isDual: true },
-        { key: "RR_IN", nameTh: "หลังขวาใน (RR-In)", nameEn: "Rear Right Inner", axle: 2, side: "right", isDual: true },
-        { key: "RR_OUT", nameTh: "หลังขวานอก (RR-Out)", nameEn: "Rear Right Outer", axle: 2, side: "right", isDual: true },
+        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false, positionNumber: 1 },
+        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false, positionNumber: 2 },
+        { key: "RL_OUT", nameTh: "หลังซ้ายนอก (RL-Out)", nameEn: "Rear Left Outer", axle: 2, side: "left", isDual: true, positionNumber: 3 },
+        { key: "RL_IN", nameTh: "หลังซ้ายใน (RL-In)", nameEn: "Rear Left Inner", axle: 2, side: "left", isDual: true, positionNumber: 4 },
+        { key: "RR_IN", nameTh: "หลังขวาใน (RR-In)", nameEn: "Rear Right Inner", axle: 2, side: "right", isDual: true, positionNumber: 5 },
+        { key: "RR_OUT", nameTh: "หลังขวานอก (RR-Out)", nameEn: "Rear Right Outer", axle: 2, side: "right", isDual: true, positionNumber: 6 },
         { key: "SPARE", nameTh: "ยางอะไหล่ (Spare)", nameEn: "Spare Tire", axle: 0, side: "left", isDual: false }
       ];
 
     case "box_truck_6w":
     case "tractor_6w":
       return [
-        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false },
-        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false },
-        { key: "RL_OUT", nameTh: "เพลาขับซ้ายนอก (RL-Out)", nameEn: "Rear Left Outer", axle: 2, side: "left", isDual: true },
-        { key: "RL_IN", nameTh: "เพลาขับซ้ายใน (RL-In)", nameEn: "Rear Left Inner", axle: 2, side: "left", isDual: true },
-        { key: "RR_IN", nameTh: "เพลาขับขวาใน (RR-In)", nameEn: "Rear Right Inner", axle: 2, side: "right", isDual: true },
-        { key: "RR_OUT", nameTh: "เพลาขับขวานอก (RR-Out)", nameEn: "Rear Right Outer", axle: 2, side: "right", isDual: true },
+        { key: "FL", nameTh: "หน้าซ้าย (FL)", nameEn: "Front Left", axle: 1, side: "left", isDual: false, positionNumber: 1 },
+        { key: "FR", nameTh: "หน้าขวา (FR)", nameEn: "Front Right", axle: 1, side: "right", isDual: false, positionNumber: 2 },
+        { key: "RL_OUT", nameTh: "เพลาขับซ้ายนอก (RL-Out)", nameEn: "Rear Left Outer", axle: 2, side: "left", isDual: true, positionNumber: 3 },
+        { key: "RL_IN", nameTh: "เพลาขับซ้ายใน (RL-In)", nameEn: "Rear Left Inner", axle: 2, side: "left", isDual: true, positionNumber: 4 },
+        { key: "RR_IN", nameTh: "เพลาขับขวาใน (RR-In)", nameEn: "Rear Right Inner", axle: 2, side: "right", isDual: true, positionNumber: 5 },
+        { key: "RR_OUT", nameTh: "เพลาขับขวานอก (RR-Out)", nameEn: "Rear Right Outer", axle: 2, side: "right", isDual: true, positionNumber: 6 },
         { key: "SPARE", nameTh: "ยางอะไหล่ (Spare)", nameEn: "Spare Tire", axle: 0, side: "left", isDual: false }
       ];
 
     case "trailer_2axle":
     case "trailer_3axle":
       return [
-        { key: "T1_L_OUT", nameTh: "หางพ่วงเพลา 1 ซ้ายนอก", nameEn: "Trailer Axle 1 Left Outer", axle: 1, side: "left", isDual: true },
-        { key: "T1_L_IN", nameTh: "หางพ่วงเพลา 1 ซ้ายใน", nameEn: "Trailer Axle 1 Left Inner", axle: 1, side: "left", isDual: true },
-        { key: "T1_R_IN", nameTh: "หางพ่วงเพลา 1 ขวาใน", nameEn: "Trailer Axle 1 Right Inner", axle: 1, side: "right", isDual: true },
-        { key: "T1_R_OUT", nameTh: "หางพ่วงเพลา 1 ขวานอก", nameEn: "Trailer Axle 1 Right Outer", axle: 1, side: "right", isDual: true },
-        { key: "T2_L_OUT", nameTh: "หางพ่วงเพลา 2 ซ้ายนอก", nameEn: "Trailer Axle 2 Left Outer", axle: 2, side: "left", isDual: true },
-        { key: "T2_L_IN", nameTh: "หางพ่วงเพลา 2 ซ้ายใน", nameEn: "Trailer Axle 2 Left Inner", axle: 2, side: "left", isDual: true },
-        { key: "T2_R_IN", nameTh: "หางพ่วงเพลา 2 ขวาใน", nameEn: "Trailer Axle 2 Right Inner", axle: 2, side: "right", isDual: true },
-        { key: "T2_R_OUT", nameTh: "หางพ่วงเพลา 2 ขวานอก", nameEn: "Trailer Axle 2 Right Outer", axle: 2, side: "right", isDual: true },
-        { key: "T3_L_OUT", nameTh: "หางพ่วงเพลา 3 ซ้ายนอก", nameEn: "Trailer Axle 3 Left Outer", axle: 3, side: "left", isDual: true },
-        { key: "T3_L_IN", nameTh: "หางพ่วงเพลา 3 ซ้ายใน", nameEn: "Trailer Axle 3 Left Inner", axle: 3, side: "left", isDual: true },
-        { key: "T3_R_IN", nameTh: "หางพ่วงเพลา 3 ขวาใน", nameEn: "Trailer Axle 3 Right Inner", axle: 3, side: "right", isDual: true },
-        { key: "T3_R_OUT", nameTh: "หางพ่วงเพลา 3 ขวานอก", nameEn: "Trailer Axle 3 Right Outer", axle: 3, side: "right", isDual: true }
+        { key: "T1_L_OUT", nameTh: "หางพ่วงเพลา 1 ซ้ายนอก", nameEn: "Trailer Axle 1 Left Outer", axle: 1, side: "left", isDual: true, positionNumber: 1 },
+        { key: "T1_L_IN", nameTh: "หางพ่วงเพลา 1 ซ้ายใน", nameEn: "Trailer Axle 1 Left Inner", axle: 1, side: "left", isDual: true, positionNumber: 2 },
+        { key: "T1_R_IN", nameTh: "หางพ่วงเพลา 1 ขวาใน", nameEn: "Trailer Axle 1 Right Inner", axle: 1, side: "right", isDual: true, positionNumber: 3 },
+        { key: "T1_R_OUT", nameTh: "หางพ่วงเพลา 1 ขวานอก", nameEn: "Trailer Axle 1 Right Outer", axle: 1, side: "right", isDual: true, positionNumber: 4 },
+        { key: "T2_L_OUT", nameTh: "หางพ่วงเพลา 2 ซ้ายนอก", nameEn: "Trailer Axle 2 Left Outer", axle: 2, side: "left", isDual: true, positionNumber: 5 },
+        { key: "T2_L_IN", nameTh: "หางพ่วงเพลา 2 ซ้ายใน", nameEn: "Trailer Axle 2 Left Inner", axle: 2, side: "left", isDual: true, positionNumber: 6 },
+        { key: "T2_R_IN", nameTh: "หางพ่วงเพลา 2 ขวาใน", nameEn: "Trailer Axle 2 Right Inner", axle: 2, side: "right", isDual: true, positionNumber: 7 },
+        { key: "T2_R_OUT", nameTh: "หางพ่วงเพลา 2 ขวานอก", nameEn: "Trailer Axle 2 Right Outer", axle: 2, side: "right", isDual: true, positionNumber: 8 },
+        { key: "T3_L_OUT", nameTh: "หางพ่วงเพลา 3 ซ้ายนอก", nameEn: "Trailer Axle 3 Left Outer", axle: 3, side: "left", isDual: true, positionNumber: 9 },
+        { key: "T3_L_IN", nameTh: "หางพ่วงเพลา 3 ซ้ายใน", nameEn: "Trailer Axle 3 Left Inner", axle: 3, side: "left", isDual: true, positionNumber: 10 },
+        { key: "T3_R_IN", nameTh: "หางพ่วงเพลา 3 ขวาใน", nameEn: "Trailer Axle 3 Right Inner", axle: 3, side: "right", isDual: true, positionNumber: 11 },
+        { key: "T3_R_OUT", nameTh: "หางพ่วงเพลา 3 ขวานอก", nameEn: "Trailer Axle 3 Right Outer", axle: 3, side: "right", isDual: true, positionNumber: 12 }
       ];
 
     case "tractor_10w":
@@ -79,16 +80,16 @@ export function getWheelPositionsForVehicleType(vehicleType: VehicleType): Wheel
     case "other":
     default:
       return [
-        { key: "FL", nameTh: "เพลา 1 หน้าซ้าย (FL)", nameEn: "Axle 1 Front Left", axle: 1, side: "left", isDual: false },
-        { key: "FR", nameTh: "เพลา 1 หน้าขวา (FR)", nameEn: "Axle 1 Front Right", axle: 1, side: "right", isDual: false },
-        { key: "A2_L_OUT", nameTh: "เพลา 2 ซ้ายนอก (A2-L-Out)", nameEn: "Axle 2 Left Outer", axle: 2, side: "left", isDual: true },
-        { key: "A2_L_IN", nameTh: "เพลา 2 ซ้ายใน (A2-L-In)", nameEn: "Axle 2 Left Inner", axle: 2, side: "left", isDual: true },
-        { key: "A2_R_IN", nameTh: "เพลา 2 ขวาใน (A2-R-In)", nameEn: "Axle 2 Right Inner", axle: 2, side: "right", isDual: true },
-        { key: "A2_R_OUT", nameTh: "เพลา 2 ขวานอก (A2-R-Out)", nameEn: "Axle 2 Right Outer", axle: 2, side: "right", isDual: true },
-        { key: "A3_L_OUT", nameTh: "เพลา 3 ซ้ายนอก (A3-L-Out)", nameEn: "Axle 3 Left Outer", axle: 3, side: "left", isDual: true },
-        { key: "A3_L_IN", nameTh: "เพลา 3 ซ้ายใน (A3-L-In)", nameEn: "Axle 3 Left Inner", axle: 3, side: "left", isDual: true },
-        { key: "A3_R_IN", nameTh: "เพลา 3 ขวาใน (A3-R-In)", nameEn: "Axle 3 Right Inner", axle: 3, side: "right", isDual: true },
-        { key: "A3_R_OUT", nameTh: "เพลา 3 ขวานอก (A3-R-Out)", nameEn: "Axle 3 Right Outer", axle: 3, side: "right", isDual: true },
+        { key: "FL", nameTh: "เพลา 1 หน้าซ้าย (FL)", nameEn: "Axle 1 Front Left", axle: 1, side: "left", isDual: false, positionNumber: 1 },
+        { key: "FR", nameTh: "เพลา 1 หน้าขวา (FR)", nameEn: "Axle 1 Front Right", axle: 1, side: "right", isDual: false, positionNumber: 2 },
+        { key: "A2_L_OUT", nameTh: "เพลา 2 ซ้ายนอก (A2-L-Out)", nameEn: "Axle 2 Left Outer", axle: 2, side: "left", isDual: true, positionNumber: 3 },
+        { key: "A2_L_IN", nameTh: "เพลา 2 ซ้ายใน (A2-L-In)", nameEn: "Axle 2 Left Inner", axle: 2, side: "left", isDual: true, positionNumber: 4 },
+        { key: "A2_R_IN", nameTh: "เพลา 2 ขวาใน (A2-R-In)", nameEn: "Axle 2 Right Inner", axle: 2, side: "right", isDual: true, positionNumber: 5 },
+        { key: "A2_R_OUT", nameTh: "เพลา 2 ขวานอก (A2-R-Out)", nameEn: "Axle 2 Right Outer", axle: 2, side: "right", isDual: true, positionNumber: 6 },
+        { key: "A3_L_OUT", nameTh: "เพลา 3 ซ้ายนอก (A3-L-Out)", nameEn: "Axle 3 Left Outer", axle: 3, side: "left", isDual: true, positionNumber: 7 },
+        { key: "A3_L_IN", nameTh: "เพลา 3 ซ้ายใน (A3-L-In)", nameEn: "Axle 3 Left Inner", axle: 3, side: "left", isDual: true, positionNumber: 8 },
+        { key: "A3_R_IN", nameTh: "เพลา 3 ขวาใน (A3-R-In)", nameEn: "Axle 3 Right Inner", axle: 3, side: "right", isDual: true, positionNumber: 9 },
+        { key: "A3_R_OUT", nameTh: "เพลา 3 ขวานอก (A3-R-Out)", nameEn: "Axle 3 Right Outer", axle: 3, side: "right", isDual: true, positionNumber: 10 },
         { key: "SPARE", nameTh: "ยางอะไหล่ (Spare)", nameEn: "Spare Tire", axle: 0, side: "left", isDual: false }
       ];
   }
