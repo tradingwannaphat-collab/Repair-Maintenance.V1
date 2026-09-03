@@ -688,6 +688,81 @@ export interface VehicleTireProfile {
   avgTreadDepthMm: number;
 }
 
+export interface EngineOilRecord {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleType?: VehicleType;
+  driverName?: string;
+  carrierCompany?: string;
+  serviceDate: string; // YYYY-MM-DD
+  serviceMileage: number; // เลขไมล์ขณะเปลี่ยนถ่าย (กม.)
+  recommendedIntervalKm: number; // ระยะรอบการเปลี่ยนมาตรฐาน เช่น 20,000 กม.
+  nextDueMileage: number; // เลขไมล์กำหนดเปลี่ยนถัดไป = serviceMileage + recommendedIntervalKm
+  nextDueDate?: string; // วันที่คาดการณ์รอบถัดไป
+  oilBrand: string; // e.g. "PTT Dynamic", "Shell Rimula", "Caltex Delo", "Mobil Delvac"
+  oilViscosityGrade: string; // e.g. "15W-40", "10W-30", "20W-50"
+  oilType: 'fully_synthetic' | 'semi_synthetic' | 'mineral' | 'heavy_duty' | string;
+  oilQuantityLiters: number; // ปริมาณที่เติม (ลิตร)
+  oilUnitCost?: number; // ราคาต่อลิตร/ถัง
+  oilTotalCost: number; // ค่าน้ำมันรวม (บาท)
+  filterReplaced: boolean; // เปลี่ยนไส้กรองน้ำมันเครื่องด้วยหรือไม่
+  filterBrand?: string; // e.g. "ISUZU Genuine", "HINO Genuine", "Denso", "Sakura"
+  filterCost?: number; // ราคาไส้กรอง (บาท)
+  drainWasherReplaced?: boolean; // เปลี่ยนแหวนรองน็อตถ่าย
+  fuelFilterReplaced?: boolean; // เปลี่ยนกรองโซล่า/ดักน้ำ
+  airFilterChecked?: 'cleaned' | 'replaced' | 'normal' | 'none'; // ตรวจเช็คกรองอากาศ
+  serviceLocationType: 'tnb_workshop' | 'authorized_center' | 'external_garage';
+  serviceLocationName: string; // e.g. "ศูนย์บริการซ่อมบำรุง TNB Workshop", "ตรีเพชรอีซูซุ"
+  technicianName: string; // ช่างผู้ดำเนินการ
+  inspectorName?: string; // ผู้ตรวจรับงาน / หัวหน้าช่าง
+  laborCost: number; // ค่าแรงบริการ (0 บาทถ้าเป็นอู่ใน)
+  totalCost: number; // ค่าใช้จ่ายรวมทั้งหมด
+  ticketId?: string; // เชื่อมโยงใบแจ้งซ่อม
+  ticketNumber?: string; // e.g. "REP-2026-0801"
+  requisitionId?: string; // เชื่อมโยงใบเบิกพัสดุ
+  invoiceNumber?: string; // เลขที่ใบเสร็จ/บิล
+  oilConditionRating?: 'clean' | 'normal' | 'dark' | 'sludge' | 'burnt'; // สภาพน้ำมันเก่าที่ถ่ายออก
+  status: 'completed' | 'scheduled' | 'cancelled';
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface VehicleOilStatus {
+  vehicle: VehicleRecord;
+  hasEngine: boolean; // true สำหรับหัวลาก, รถบรรทุก, กระบะ; false สำหรับหางลาก Trailer
+  lastRecord?: EngineOilRecord;
+  currentMileage: number;
+  lastServiceMileage: number;
+  lastServiceDate?: string;
+  nextDueMileage: number;
+  remainingKm: number; // nextDueMileage - currentMileage
+  isOverdue: boolean; // remainingKm < 0
+  isDueSoon: boolean; // remainingKm >= 0 && remainingKm <= 1500
+  usagePercent: number; // % ของรอบการใช้งาน
+  status: 'normal' | 'due_soon' | 'overdue' | 'no_record' | 'not_applicable';
+  recommendedIntervalKm: number;
+  oilBrand?: string;
+  oilViscosityGrade?: string;
+}
+
+export interface EngineOilSummaryStats {
+  totalMotorVehicles: number;
+  recordedVehiclesCount: number;
+  overdueCount: number;
+  dueSoonCount: number;
+  normalCount: number;
+  noRecordCount: number;
+  totalServiceCost: number;
+  totalOilVolumeLiters: number;
+  diyWorkshopCount: number;
+  authorizedCenterCount: number;
+  filterReplacementRatePercent: number;
+}
+
 export type AppNavView = 
   | 'requester' 
   | 'worker' 
@@ -696,10 +771,143 @@ export type AppNavView =
   | 'pm_plan' 
   | 'maintenance_intervals'
   | 'tire_management'
+  | 'oil_change_summary'
   | 'repair_history'
   | 'part_list' 
   | 'receiving' 
   | 'requisition' 
+  | 'directory'
   | 'workflow';
+
+// ==========================================
+// Service Directory: Mechanics, Vendors & Repair Centers
+// ==========================================
+
+export type TechnicianStatus = 'active' | 'busy' | 'leave' | 'inactive';
+
+export interface TechnicianItem {
+  id: string;
+  name: string; // ชื่อ-นามสกุล เช่น "วิชาญ ใจกล้า"
+  nickname?: string; // ชื่อเล่น เช่น "ช่างชาญ"
+  roleTitle: string; // ตำแหน่ง เช่น "หัวหน้าช่างประจำศูนย์ / Foreman"
+  specialties: RepairCategory[]; // สาขาความเชี่ยวชาญ e.g. ['suspension', 'engine']
+  specialtyDetails?: string; // คำอธิบายความชำนาญ เช่น "ผู้เชี่ยวชาญระบบเบรกลมและคานรับน้ำหนัก 10 ล้อ"
+  phone: string;
+  lineId?: string;
+  status: TechnicianStatus;
+  employeeId?: string; // รหัสพนักงาน
+  experienceYears?: number;
+  completedJobsCount?: number;
+  rating?: number; // 1-5 ดาว
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type VendorStatus = 'active' | 'inactive';
+
+export interface VendorShopItem {
+  id: string;
+  name: string; // ชื่อร้านค้า / บริษัท เช่น "บจก. เจริญยนต์อะไหล่บรรทุก พระราม 2"
+  shortName?: string; // ชื่อเรียกสั้นๆ เช่น "เจริญยนต์"
+  category: string; // หมวดหมู่อะไหล่หลัก เช่น "อะไหล่ช่วงล่างและเบรกลม"
+  suppliedCategories?: RepairCategory[]; // หมวดหมู่งานซ่อมที่จำหน่าย
+  contactPerson?: string; // ผู้ติดต่อ / เซลล์
+  phone: string;
+  secondaryPhone?: string;
+  taxId?: string; // เลขประจำตัวผู้เสียภาษี 13 หลัก
+  email?: string;
+  address: string; // ที่อยู่ร้านค้า
+  creditTermDays?: number; // เครดิตเทอม (วัน) เช่น 30, 45, 60 หรือ 0 (เงินสด)
+  discountPercent?: number; // ส่วนลดพิเศษตามข้อตกลง %
+  status: VendorStatus;
+  rating?: number;
+  notes?: string;
+  bankAccount?: string; // บัญชีโอนเงิน / เลขบัญชี
+  updatedAt: string;
+  createdAt: string;
+}
+
+export type ServiceCenterType = 
+  | 'authorized_dealer'   // ศูนย์บริการมาตรฐานตัวแทนจำหน่าย (ISUZU, HINO ฯลฯ)
+  | 'specialized_workshop' // อู่เฉพาะทาง (ระบบเบรกลม, ปั๊มหัวฉีด, ช่วงล่าง, ระบบแอร์)
+  | 'general_garage'       // อู่ซ่อมทั่วไป / อู่ภายนอก
+  | 'tire_center'          // ศูนย์บริการยางและตั้งศูนย์ถ่วงล้อ
+  | 'body_paint_center';   // อู่เคาะพ่นสีและดัดคัสซี
+
+export interface ServiceCenterItem {
+  id: string;
+  name: string; // ชื่อศูนย์ซ่อม / อู่ เช่น "ศูนย์บริการตรีเพชรอีซูซุ นครปฐม"
+  centerType: ServiceCenterType;
+  brandSpecialization?: string; // แบรนด์รถที่เชี่ยวชาญ เช่น "ISUZU, HINO"
+  servicesOffered: string[]; // บริการเด่น เช่น ["ตั้งศูนย์ถ่วงล้อ 10 ล้อ", "เช็คปั๊มหัวฉีดดีเซล", "ดัดคัสซี"]
+  contactPerson?: string;
+  phone: string;
+  emergencyPhone?: string; // เบอร์ฉุกเฉิน 24 ชม.
+  address: string;
+  province?: string;
+  googleMapsUrl?: string;
+  hasMobileService?: boolean; // มีหน่วยช่างเคลื่อนที่นอกสถานที่
+  creditTermDays?: number;
+  status: 'active' | 'inactive';
+  rating?: number;
+  notes?: string;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface ServiceDirectoryState {
+  technicians: TechnicianItem[];
+  vendors: VendorShopItem[];
+  serviceCenters: ServiceCenterItem[];
+  lastUpdated?: string;
+}
+
+// ==========================================
+// Multi-User Real-time Collaboration Types
+// ==========================================
+
+export interface CollabUser {
+  id: string;
+  name: string;
+  nickname?: string;
+  role: string; // e.g. "หัวหน้าช่าง", "ช่างเทคนิค", "ฝ่ายจัดซื้อ", "ผู้จัดการศูนย์", "พนักงานขับรถ"
+  department: string;
+  color: string; // Hex color for avatar & badge
+  avatarIcon?: string;
+}
+
+export interface LivePresenceUser extends CollabUser {
+  connectedAt: string;
+  lastActiveAt: string;
+  currentView: AppNavView;
+  activeTicketId?: string;
+  activeVehicleId?: string;
+  isIdle?: boolean;
+}
+
+export interface LiveActivityEvent {
+  id: string;
+  timestamp: string;
+  userName: string;
+  userRole: string;
+  userColor: string;
+  actionType: 
+    | 'TICKET_CREATED' 
+    | 'TICKET_UPDATED' 
+    | 'STATUS_CHANGED' 
+    | 'INVENTORY_RECEIVED' 
+    | 'INVENTORY_REQUISITION' 
+    | 'PM_SCHEDULED' 
+    | 'INSPECTION_SUBMITTED' 
+    | 'TECHNICIAN_EDITED'
+    | 'VENDOR_EDITED'
+    | 'CENTER_EDITED'
+    | 'TIRE_UPDATED'
+    | 'USER_JOINED';
+  title: string;
+  description: string;
+  targetId?: string;
+}
 
 

@@ -1,6 +1,8 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import fs from "fs";
+import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -14,6 +16,8 @@ import {
 import { INITIAL_TICKETS } from "./src/data/mockData";
 import { INITIAL_DAILY_INSPECTIONS } from "./src/data/dailyInspectionData";
 import { INITIAL_PM_SCHEDULES_2026 } from "./src/data/pmPlanData";
+import { INITIAL_SERVICE_DIRECTORY } from "./src/data/initialDirectoryData";
+import { ServiceDirectoryState, LiveActivityEvent } from "./src/types";
 
 dotenv.config();
 
@@ -47,6 +51,7 @@ interface FleetServerDB {
   requisitions: any[];
   pmSchedules: any[];
   dailyInspections: any[];
+  directory: ServiceDirectoryState;
 }
 
 function getDefaultFleetDB(): FleetServerDB {
@@ -60,10 +65,103 @@ function getDefaultFleetDB(): FleetServerDB {
     requisitions: INITIAL_GOODS_REQUISITIONS,
     pmSchedules: INITIAL_PM_SCHEDULES_2026,
     dailyInspections: INITIAL_DAILY_INSPECTIONS,
+    directory: INITIAL_SERVICE_DIRECTORY,
   };
 }
 
 let inMemoryDB: FleetServerDB = getDefaultFleetDB();
+
+// Track active connected clients for multi-user collaboration
+interface ConnectedClient {
+  id: string;
+  ws: WebSocket;
+  user: {
+    id: string;
+    name: string;
+    nickname?: string;
+    role: string;
+    department: string;
+    color: string;
+  };
+  currentView: string;
+  activeTicketId?: string;
+  lastActiveAt: string;
+  connectedAt: string;
+}
+
+const connectedClients = new Map<string, ConnectedClient>();
+const recentActivities: LiveActivityEvent[] = [
+  {
+    id: "act-init-1",
+    timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+    userName: "วิชาญ ใจกล้า",
+    userRole: "หัวหน้าช่างประจำศูนย์",
+    userColor: "#2563EB",
+    actionType: "STATUS_CHANGED",
+    title: "อัปเดตใบแจ้งซ่อม",
+    description: "ตรวจสอบงานระบบเบรกลมและคานแหนบรถหัวลากเสร็จสมบูรณ์"
+  },
+  {
+    id: "act-init-2",
+    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+    userName: "พรทิพย์ สุวรรณฉัตร",
+    userRole: "ฝ่ายจัดซื้อ & สโตร์",
+    userColor: "#10B981",
+    actionType: "INVENTORY_RECEIVED",
+    title: "รับเข้าอะไหล่ใหม่",
+    description: "รับเข้าน้ำมันเครื่อง PTT 15W-40 และไส้กรองแท้ ISUZU เข้าคลัง"
+  }
+];
+
+function addActivity(event: Omit<LiveActivityEvent, "id">) {
+  const newAct: LiveActivityEvent = {
+    ...event,
+    id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+  };
+  recentActivities.unshift(newAct);
+  if (recentActivities.length > 50) {
+    recentActivities.pop();
+  }
+  return newAct;
+}
+
+function getActiveUsersPayload() {
+  const now = Date.now();
+  // Filter out clients that haven't pinged in 2 minutes
+  const activeList: any[] = [];
+  for (const [id, client] of connectedClients.entries()) {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      activeList.push({
+        id: client.user.id || id,
+        clientId: id,
+        name: client.user.name,
+        nickname: client.user.nickname,
+        role: client.user.role,
+        department: client.user.department,
+        color: client.user.color,
+        currentView: client.currentView,
+        activeTicketId: client.activeTicketId,
+        connectedAt: client.connectedAt,
+        lastActiveAt: client.lastActiveAt,
+        isIdle: now - new Date(client.lastActiveAt).getTime() > 60000
+      });
+    }
+  }
+  return activeList;
+}
+
+function broadcastToAll(message: any, excludeClientId?: string) {
+  const payload = JSON.stringify(message);
+  for (const [id, client] of connectedClients.entries()) {
+    if (id !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(payload);
+      } catch (err) {
+        console.error(`[WS Broadcast Error] Client ${id}:`, err);
+      }
+    }
+  }
+}
 
 // Initialize DB from disk or default
 function initServerDB() {
@@ -86,8 +184,11 @@ function initServerDB() {
             requisitions: Array.isArray(parsed.requisitions) ? parsed.requisitions : INITIAL_GOODS_REQUISITIONS,
             pmSchedules: Array.isArray(parsed.pmSchedules) ? parsed.pmSchedules : INITIAL_PM_SCHEDULES_2026,
             dailyInspections: Array.isArray(parsed.dailyInspections) ? parsed.dailyInspections : INITIAL_DAILY_INSPECTIONS,
+            directory: (parsed.directory && Array.isArray(parsed.directory.technicians) && parsed.directory.technicians.length > 0)
+              ? parsed.directory
+              : INITIAL_SERVICE_DIRECTORY,
           };
-          console.log(`[Fleet Server DB] Loaded ${inMemoryDB.vehicles.length} vehicles, ${inMemoryDB.tickets.length} tickets from disk`);
+          console.log(`[Fleet Server DB] Loaded ${inMemoryDB.vehicles.length} vehicles, ${inMemoryDB.tickets.length} tickets, ${inMemoryDB.directory.technicians.length} technicians from disk`);
           return;
         }
       }
@@ -151,7 +252,10 @@ async function startServer() {
         receipts, 
         requisitions, 
         pmSchedules, 
-        dailyInspections 
+        dailyInspections,
+        directory,
+        updatedBy,
+        actionDescription
       } = req.body;
 
       let changed = false;
@@ -185,11 +289,45 @@ async function startServer() {
         inMemoryDB.dailyInspections = dailyInspections;
         changed = true;
       }
+      if (directory && (Array.isArray(directory.technicians) || Array.isArray(directory.vendors) || Array.isArray(directory.serviceCenters))) {
+        inMemoryDB.directory = {
+          technicians: Array.isArray(directory.technicians) ? directory.technicians : inMemoryDB.directory.technicians,
+          vendors: Array.isArray(directory.vendors) ? directory.vendors : inMemoryDB.directory.vendors,
+          serviceCenters: Array.isArray(directory.serviceCenters) ? directory.serviceCenters : inMemoryDB.directory.serviceCenters,
+          lastUpdated: now
+        };
+        changed = true;
+      }
 
       if (changed) {
         inMemoryDB.lastUpdated = now;
         inMemoryDB.version += 1;
         saveServerDB(inMemoryDB);
+
+        // Broadcast to all active WebSocket clients
+        broadcastToAll({
+          type: "full_state_sync",
+          version: inMemoryDB.version,
+          lastUpdated: inMemoryDB.lastUpdated,
+          data: inMemoryDB,
+          updatedBy
+        });
+
+        if (actionDescription) {
+          const act = addActivity({
+            timestamp: now,
+            userName: updatedBy?.name || "ทีมงาน TNB",
+            userRole: updatedBy?.role || "ผู้ดูแลระบบ",
+            userColor: updatedBy?.color || "#2563EB",
+            actionType: "TICKET_UPDATED",
+            title: "บันทึกข้อมูลกองรถส่วนกลาง",
+            description: actionDescription
+          });
+          broadcastToAll({
+            type: "activity_event",
+            activity: act
+          });
+        }
       }
 
       res.json({
@@ -206,6 +344,70 @@ async function startServer() {
       console.error("Error in /api/fleet/sync:", err);
       res.status(500).json({ success: false, error: err?.message || "Sync failed" });
     }
+  });
+
+  // API Route: GET Directory of Technicians, Vendors and Repair Centers
+  app.get("/api/directory", (req, res) => {
+    res.json({
+      success: true,
+      data: inMemoryDB.directory || INITIAL_SERVICE_DIRECTORY
+    });
+  });
+
+  // API Route: POST Update Directory
+  app.post("/api/directory", (req, res) => {
+    try {
+      const { technicians, vendors, serviceCenters, updatedBy, actionDescription } = req.body;
+      const now = new Date().toISOString();
+
+      inMemoryDB.directory = {
+        technicians: Array.isArray(technicians) ? technicians : inMemoryDB.directory.technicians,
+        vendors: Array.isArray(vendors) ? vendors : inMemoryDB.directory.vendors,
+        serviceCenters: Array.isArray(serviceCenters) ? serviceCenters : inMemoryDB.directory.serviceCenters,
+        lastUpdated: now
+      };
+      inMemoryDB.version += 1;
+      inMemoryDB.lastUpdated = now;
+      saveServerDB(inMemoryDB);
+
+      const act = addActivity({
+        timestamp: now,
+        userName: updatedBy?.name || "ผู้ใช้งานระบบ",
+        userRole: updatedBy?.role || "ผู้ดูแลระบบ",
+        userColor: updatedBy?.color || "#3B82F6",
+        actionType: "TECHNICIAN_EDITED",
+        title: "ปรับแต่งทำเนียบช่าง / ร้านค้า / ศูนย์ซ่อม",
+        description: actionDescription || "อัปเดตข้อมูลทำเนียบช่าง ร้านค้า และศูนย์ซ่อมบำรุง"
+      });
+
+      broadcastToAll({
+        type: "data_sync",
+        entity: "directory",
+        data: inMemoryDB.directory,
+        version: inMemoryDB.version,
+        lastUpdated: inMemoryDB.lastUpdated,
+        updatedBy,
+        activity: act
+      });
+
+      res.json({
+        success: true,
+        data: inMemoryDB.directory,
+        version: inMemoryDB.version
+      });
+    } catch (err: any) {
+      console.error("Error updating directory:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to update directory" });
+    }
+  });
+
+  // API Route: GET Presence & Activities
+  app.get("/api/collab/presence", (req, res) => {
+    res.json({
+      success: true,
+      users: getActiveUsersPayload(),
+      recentActivities
+    });
   });
 
   // API Route: POST Reset back to standard 108 Master Fleet
@@ -371,16 +573,200 @@ ${JSON.stringify(highCostTickets || [], null, 2)}
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.resolve(process.cwd(), "dist");
     app.use(express.static(distPath));
+    app.use("/api/*", (req, res) => {
+      res.status(404).json({ success: false, error: "API route not found" });
+    });
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Application index.html not found. Please run npm run build.");
+      }
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`AutoCare Pro server running on http://0.0.0.0:${PORT}`);
+  const server = http.createServer(app);
+
+  const wss = new WebSocketServer({ server, path: "/ws/sync" });
+
+  wss.on("connection", (ws: WebSocket) => {
+    const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    
+    // Store preliminary client
+    const newClient: ConnectedClient = {
+      id: clientId,
+      ws,
+      user: {
+        id: clientId,
+        name: "ผู้ใช้งานนิรนาม",
+        role: "ช่างเทคนิค",
+        department: "ซ่อมบำรุง",
+        color: "#2563EB"
+      },
+      currentView: "worker",
+      connectedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString()
+    };
+    connectedClients.set(clientId, newClient);
+
+    // Send initial greeting with current db version, presence list, and recent activities
+    ws.send(JSON.stringify({
+      type: "init",
+      clientId,
+      version: inMemoryDB.version,
+      lastUpdated: inMemoryDB.lastUpdated,
+      users: getActiveUsersPayload(),
+      recentActivities
+    }));
+
+    // Broadcast presence update to everyone else
+    broadcastToAll({
+      type: "presence_update",
+      users: getActiveUsersPayload()
+    });
+
+    ws.on("message", (messageRaw: any) => {
+      try {
+        const msg = JSON.parse(messageRaw.toString());
+        const client = connectedClients.get(clientId);
+        if (!client) return;
+
+        client.lastActiveAt = new Date().toISOString();
+
+        if (msg.type === "register_presence") {
+          if (msg.user) {
+            client.user = {
+              ...client.user,
+              ...msg.user
+            };
+          }
+          if (msg.currentView) {
+            client.currentView = msg.currentView;
+          }
+          if (msg.activeTicketId !== undefined) {
+            client.activeTicketId = msg.activeTicketId;
+          }
+
+          broadcastToAll({
+            type: "presence_update",
+            users: getActiveUsersPayload()
+          });
+        } else if (msg.type === "navigate") {
+          client.currentView = msg.view || client.currentView;
+          client.activeTicketId = msg.ticketId || undefined;
+          broadcastToAll({
+            type: "presence_update",
+            users: getActiveUsersPayload()
+          });
+        } else if (msg.type === "heartbeat") {
+          ws.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now() }));
+        } else if (msg.type === "log_activity") {
+          const act = addActivity({
+            timestamp: new Date().toISOString(),
+            userName: client.user.name,
+            userRole: client.user.role,
+            userColor: client.user.color,
+            actionType: msg.actionType || "TICKET_UPDATED",
+            title: msg.title || "อัปเดตข้อมูลระบบ",
+            description: msg.description || "",
+            targetId: msg.targetId
+          });
+          broadcastToAll({
+            type: "activity_event",
+            activity: act
+          });
+        } else if (msg.type === "mutation") {
+          const { entity, data, actionDescription, title } = msg;
+          let changed = false;
+          const now = new Date().toISOString();
+
+          if (entity === "tickets" && Array.isArray(data)) {
+            inMemoryDB.tickets = data;
+            changed = true;
+          } else if (entity === "vehicles" && Array.isArray(data)) {
+            inMemoryDB.vehicles = data;
+            changed = true;
+          } else if (entity === "inventory" && Array.isArray(data)) {
+            inMemoryDB.inventory = data;
+            changed = true;
+          } else if (entity === "receipts" && Array.isArray(data)) {
+            inMemoryDB.receipts = data;
+            changed = true;
+          } else if (entity === "requisitions" && Array.isArray(data)) {
+            inMemoryDB.requisitions = data;
+            changed = true;
+          } else if (entity === "pmSchedules" && Array.isArray(data)) {
+            inMemoryDB.pmSchedules = data;
+            changed = true;
+          } else if (entity === "dailyInspections" && Array.isArray(data)) {
+            inMemoryDB.dailyInspections = data;
+            changed = true;
+          } else if (entity === "directory" && data) {
+            inMemoryDB.directory = data;
+            changed = true;
+          }
+
+          if (changed) {
+            inMemoryDB.lastUpdated = now;
+            inMemoryDB.version += 1;
+            saveServerDB(inMemoryDB);
+          }
+
+          const act = addActivity({
+            timestamp: now,
+            userName: client.user.name,
+            userRole: client.user.role,
+            userColor: client.user.color,
+            actionType: (msg.actionType as any) || "TICKET_UPDATED",
+            title: title || `อัปเดต ${entity}`,
+            description: actionDescription || `โดย ${client.user.name} (${client.user.role})`,
+            targetId: msg.targetId
+          });
+
+          // Broadcast sync to all clients
+          broadcastToAll({
+            type: "data_sync",
+            entity,
+            data,
+            version: inMemoryDB.version,
+            lastUpdated: inMemoryDB.lastUpdated,
+            updatedBy: client.user,
+            activity: act
+          });
+        }
+      } catch (err) {
+        console.error(`[WS Message Error] Client ${clientId}:`, err);
+      }
+    });
+
+    ws.on("close", () => {
+      connectedClients.delete(clientId);
+      broadcastToAll({
+        type: "presence_update",
+        users: getActiveUsersPayload()
+      });
+    });
+
+    ws.on("error", (err: any) => {
+      console.error(`[WS Client Error] ${clientId}:`, err);
+      connectedClients.delete(clientId);
+    });
+  });
+
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`AutoCare Pro real-time multi-user server running on http://0.0.0.0:${PORT}`);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[Server] Unhandled Rejection:", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[Server] Uncaught Exception:", err);
   });
 }
 
 startServer();
+

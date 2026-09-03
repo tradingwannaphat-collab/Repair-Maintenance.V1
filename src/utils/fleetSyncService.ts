@@ -5,7 +5,8 @@ import {
   GoodsReceiptRecord, 
   GoodsRequisitionRecord, 
   PMMonthlyScheduleItem, 
-  DailyVehicleInspectionRecord 
+  DailyVehicleInspectionRecord,
+  ServiceDirectoryState 
 } from "../types";
 
 export interface SyncPayload {
@@ -16,6 +17,7 @@ export interface SyncPayload {
   requisitions?: GoodsRequisitionRecord[];
   pmSchedules?: PMMonthlyScheduleItem[];
   dailyInspections?: DailyVehicleInspectionRecord[];
+  directory?: ServiceDirectoryState;
   timestamp?: string;
   sourceClient?: string;
 }
@@ -30,6 +32,7 @@ export interface ServerStateResponse {
     requisitions: GoodsRequisitionRecord[];
     pmSchedules: PMMonthlyScheduleItem[];
     dailyInspections: DailyVehicleInspectionRecord[];
+    directory?: ServiceDirectoryState;
     lastUpdated: string;
     version: number;
   };

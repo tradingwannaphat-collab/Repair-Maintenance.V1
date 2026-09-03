@@ -31,9 +31,10 @@ import {
   CircleDot,
   SlidersHorizontal
 } from "lucide-react";
-import { AppNavView } from "../types";
+import { AppNavView, CollabUser, LivePresenceUser } from "../types";
 import { TnbLogo } from "./TnbLogo";
-import { Cloud, RefreshCw, CheckCircle } from "lucide-react";
+import { Cloud, RefreshCw, CheckCircle, Users } from "lucide-react";
+import { CollabHeaderWidget } from "./CollabHeaderWidget";
 
 interface NavbarProps {
   currentView: AppNavView;
@@ -58,6 +59,10 @@ interface NavbarProps {
   onOpenSearchModal: () => void;
   onOpenExportBackupModal?: () => void;
   onOpenShareModal?: () => void;
+  collabCurrentUser?: CollabUser;
+  collabOnlineUsers?: LivePresenceUser[];
+  isWsConnected?: boolean;
+  onOpenCollabModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -82,7 +87,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenImportTicketsModal,
   onOpenSearchModal,
   onOpenExportBackupModal,
-  onOpenShareModal
+  onOpenShareModal,
+  collabCurrentUser,
+  collabOnlineUsers = [],
+  isWsConnected = false,
+  onOpenCollabModal
 }) => {
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
   const [isPmMenuOpen, setIsPmMenuOpen] = useState(false);
@@ -205,6 +214,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: Workflow,
       badge: "คู่มือ",
       badgeColor: "bg-cyan-400 text-slate-950 font-extrabold"
+    },
+    {
+      id: "directory" as AppNavView,
+      label: "ทำเนียบช่าง ร้านค้า ศูนย์ซ่อม",
+      shortLabel: "ทำเนียบช่าง/ร้านค้า",
+      icon: Users,
+      badge: "ปรับแต่งได้",
+      badgeColor: "bg-indigo-400 text-slate-950 font-bold"
     }
   ];
 
@@ -492,10 +509,34 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Workflow className="w-3.5 h-3.5" />
               <span>คู่มือระบบ</span>
             </button>
+
+            {/* 9. ทำเนียบช่าง ร้านค้า ศูนย์ซ่อม */}
+            <button
+              id="nav-tab-directory"
+              onClick={() => onSelectView("directory")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "directory"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-400" />
+              <span>ทำเนียบช่าง/ร้านค้า</span>
+            </button>
           </div>
 
-          {/* Right Actions: Quick Search, Data Management & New Repair Button */}
+          {/* Right Actions: Quick Search, Collab Presence, Data Management & New Repair Button */}
           <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+            {/* Live Multi-User Collaboration Presence Widget */}
+            {collabCurrentUser && onOpenCollabModal && (
+              <CollabHeaderWidget
+                currentUser={collabCurrentUser}
+                onlineUsers={collabOnlineUsers}
+                isConnected={isWsConnected}
+                onOpenModal={onOpenCollabModal}
+              />
+            )}
+
             {/* Cloud Real-Time Sync Status Badge & Button */}
             <button
               id="btn-cloud-sync-status"

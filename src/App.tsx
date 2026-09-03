@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Navbar } from "./components/Navbar";
 import { RequesterPortal } from "./components/RequesterPortal";
 import { WorkOperationsPortal } from "./components/WorkOperationsPortal";
@@ -13,6 +13,11 @@ import { QuickSearchModal } from "./components/QuickSearchModal";
 import { PrintWorkOrderModal } from "./components/PrintWorkOrderModal";
 import { DataBackupExportModal } from "./components/DataBackupExportModal";
 import { WorkflowGuideView } from "./components/WorkflowGuideView";
+import { ServiceDirectoryView } from "./components/ServiceDirectoryView";
+import { CollabModal } from "./components/CollabModal";
+import { CollabNotificationToast } from "./components/CollabNotificationToast";
+import { useRealtimeCollab } from "./hooks/useRealtimeCollab";
+import { INITIAL_SERVICE_DIRECTORY } from "./data/initialDirectoryData";
 import { PMPlanView } from "./components/PMPlanView";
 import { DailyInspectionView } from "./components/DailyInspectionView";
 import { MaintenanceIntervalMatrixView } from "./components/MaintenanceIntervalMatrixView";
@@ -43,7 +48,9 @@ import {
   GoodsReceiptRecord, 
   GoodsRequisitionRecord,
   PMMonthlyScheduleItem,
-  DailyVehicleInspectionRecord
+  DailyVehicleInspectionRecord,
+  ServiceDirectoryState,
+  CollabUser
 } from "./types";
 import { TnbLogo } from "./components/TnbLogo";
 import { ShareModal } from "./components/ShareModal";
@@ -64,6 +71,7 @@ const RECEIPTS_STORAGE_KEY = "tnb_fleet_clean_receipts_v5";
 const REQUISITIONS_STORAGE_KEY = "tnb_fleet_clean_requisitions_v5";
 const PM_SCHEDULES_STORAGE_KEY = "tnb_fleet_clean_pm_schedules_v1";
 const DAILY_INSPECTIONS_STORAGE_KEY = "tnb_fleet_clean_daily_inspections_v1";
+const DIRECTORY_STORAGE_KEY = "tnb_fleet_clean_directory_v1";
 
 export default function App() {
   // Navigation View with URL param support & default to Work Operations Hub
@@ -73,7 +81,8 @@ export default function App() {
       const viewParam = urlParams.get("view");
       const validViews: AppNavView[] = [
         "requester", "worker", "vehicles", "daily_inspection",
-        "pm_plan", "part_list", "receiving", "requisition", "workflow"
+        "pm_plan", "part_list", "receiving", "requisition", "workflow", "directory",
+        "maintenance_intervals", "repair_history", "tire_management"
       ];
       if (viewParam === "operations") return "worker";
       if (viewParam && validViews.includes(viewParam as AppNavView)) {
@@ -192,6 +201,64 @@ export default function App() {
     return INITIAL_GOODS_REQUISITIONS;
   });
 
+  // Directory State (รายชื่อช่าง ร้านค้าอะไหล่ ศูนย์ซ่อมตัวแทนจำหน่าย)
+  const [directory, setDirectory] = useState<ServiceDirectoryState>(() => {
+    try {
+      const saved = localStorage.getItem(DIRECTORY_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error reading directory localStorage:", e);
+    }
+    return INITIAL_SERVICE_DIRECTORY;
+  });
+
+  // Collaboration State
+  const [isCollabModalOpen, setIsCollabModalOpen] = useState(false);
+
+  // Real-Time Multi-User WebSocket Collaboration Hook
+  const {
+    currentUser,
+    setCurrentUser,
+    onlineUsers,
+    recentActivities,
+    isConnected: isWsConnected,
+    lastNotification,
+    clearNotification,
+    broadcastMutation,
+    broadcastStateSync
+  } = useRealtimeCollab({
+    currentView,
+    onDataSync: (entity, data, sender, description) => {
+      if (entity === "directory") {
+        setDirectory(data);
+      } else if (entity === "tickets") {
+        setTickets(data);
+      } else if (entity === "vehicles") {
+        setVehicles(data);
+      } else if (entity === "inventory") {
+        setInventory(data);
+      } else if (entity === "receipts") {
+        setReceipts(data);
+      } else if (entity === "requisitions") {
+        setRequisitions(data);
+      } else if (entity === "pmSchedules") {
+        setPmSchedules(data);
+      } else if (entity === "dailyInspections") {
+        setDailyInspections(data);
+      }
+    },
+    onFullStateSync: (state) => {
+      if (state.directory) setDirectory(state.directory);
+      if (state.tickets) setTickets(state.tickets);
+      if (state.vehicles) setVehicles(state.vehicles);
+      if (state.inventory) setInventory(state.inventory);
+      if (state.receipts) setReceipts(state.receipts);
+      if (state.requisitions) setRequisitions(state.requisitions);
+      if (state.pmSchedules) setPmSchedules(state.pmSchedules);
+      if (state.dailyInspections) setDailyInspections(state.dailyInspections);
+    }
+  });
+
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBackdatedModalMode, setIsBackdatedModalMode] = useState(false);
@@ -222,6 +289,7 @@ export default function App() {
           if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
           if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
           if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
           setLastSyncedTime(data.lastUpdated || new Date().toISOString());
           setIsCloudConnected(true);
         }
@@ -251,6 +319,7 @@ export default function App() {
             if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
             if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
             if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+            if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
             setLastSyncedTime(data.lastUpdated);
           }
           setIsCloudConnected(true);
@@ -273,6 +342,7 @@ export default function App() {
           if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
           if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
           if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
           setLastSyncedTime(data.lastUpdated || new Date().toISOString());
           setIsCloudConnected(true);
         }
@@ -307,7 +377,8 @@ export default function App() {
         receipts,
         requisitions,
         pmSchedules,
-        dailyInspections
+        dailyInspections,
+        directory
       });
       setIsSyncing(false);
       if (ok) {
@@ -319,7 +390,7 @@ export default function App() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections]);
+  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections, directory]);
 
   // Sync to local storage for offline resiliency
   useEffect(() => {
@@ -378,6 +449,14 @@ export default function App() {
     }
   }, [dailyInspections]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DIRECTORY_STORAGE_KEY, JSON.stringify(directory));
+    } catch (e) {
+      console.error("Error saving directory localStorage:", e);
+    }
+  }, [directory]);
+
   // Manual Force Synchronize Handler
   const handleManualSync = useCallback(async () => {
     setIsSyncing(true);
@@ -390,7 +469,8 @@ export default function App() {
         receipts,
         requisitions,
         pmSchedules,
-        dailyInspections
+        dailyInspections,
+        directory
       });
       // Fetch latest state from central server
       const res = await fetchServerFleetState();
@@ -403,6 +483,7 @@ export default function App() {
         if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
         if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
         if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+        if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
         setLastSyncedTime(data.lastUpdated || new Date().toISOString());
         setIsCloudConnected(true);
       }
@@ -411,7 +492,24 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections]);
+  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections, directory]);
+
+  // Directory Update Handler with Multi-User Realtime Broadcast
+  const handleUpdateDirectory = useCallback((updated: ServiceDirectoryState, actionDesc?: string) => {
+    setDirectory(updated);
+    broadcastMutation("directory", updated, actionDesc || "อัปเดตข้อมูลทำเนียบช่าง/ร้านค้า/ศูนย์ซ่อม");
+  }, [broadcastMutation]);
+
+  // Count active repair tickets assigned to each mechanic
+  const activeTicketsCountByMechanic = useMemo(() => {
+    const counts: Record<string, number> = {};
+    tickets.forEach((t) => {
+      if (t.status !== "completed" && t.assignedMechanic) {
+        counts[t.assignedMechanic] = (counts[t.assignedMechanic] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [tickets]);
 
   // Daily Inspection Handlers
   const handleAddDailyInspection = (record: DailyVehicleInspectionRecord, autoCreateTicket = false) => {
@@ -1139,6 +1237,10 @@ export default function App() {
         onOpenSearchModal={() => setIsSearchModalOpen(true)}
         onOpenExportBackupModal={() => setIsExportBackupModalOpen(true)}
         onOpenShareModal={() => setIsShareModalOpen(true)}
+        collabCurrentUser={currentUser}
+        collabOnlineUsers={onlineUsers}
+        isWsConnected={isWsConnected}
+        onOpenCollabModal={() => setIsCollabModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -1305,6 +1407,15 @@ export default function App() {
             onOpenExportBackupModal={() => setIsExportBackupModalOpen(true)}
           />
         )}
+
+        {/* Module 8: ทำเนียบช่าง ร้านค้า ศูนย์ซ่อม (Service Directory: Mechanics, Suppliers, Service Centers) */}
+        {currentView === "directory" && (
+          <ServiceDirectoryView
+            directory={directory}
+            onUpdateDirectory={handleUpdateDirectory}
+            activeTicketsCountByMechanic={activeTicketsCountByMechanic}
+          />
+        )}
       </main>
 
       {/* Footer */}
@@ -1363,6 +1474,7 @@ export default function App() {
           onOpenPrint={handleOpenPrint}
           inventory={inventory}
           vehicles={vehicles}
+          availableTechnicians={directory.technicians}
           onDisburseStockPart={handleDisburseStockPart}
           onRestockPart={handleRestockPart}
         />
@@ -1407,6 +1519,25 @@ export default function App() {
           isOpen={isShareModalOpen}
           onClose={() => setIsShareModalOpen(false)}
           currentView={currentView}
+        />
+      )}
+
+      {/* Real-Time Collaboration Activity Toast */}
+      <CollabNotificationToast
+        notification={lastNotification}
+        onDismiss={clearNotification}
+      />
+
+      {/* Real-Time Multi-User Collaboration & Presence Modal */}
+      {isCollabModalOpen && (
+        <CollabModal
+          isOpen={isCollabModalOpen}
+          onClose={() => setIsCollabModalOpen(false)}
+          currentUser={currentUser}
+          onSelectUser={setCurrentUser}
+          onlineUsers={onlineUsers}
+          recentActivities={recentActivities}
+          isConnected={isWsConnected}
         />
       )}
     </div>

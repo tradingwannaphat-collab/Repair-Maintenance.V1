@@ -43,7 +43,8 @@ import {
   GoodsRequisitionRecord, 
   GoodsRequisitionItem,
   VehicleRecord,
-  PostRepairCondition
+  PostRepairCondition,
+  TechnicianItem
 } from "../types";
 import { CATEGORIES_CONFIG, STATUS_CONFIG, getSubCategoryName } from "../data/categories";
 import { BreakdownLocationView } from "./BreakdownLocationView";
@@ -57,6 +58,7 @@ interface TicketDetailModalProps {
   onOpenPrint: (ticket: RepairTicket) => void;
   inventory?: InventoryItem[];
   vehicles?: VehicleRecord[];
+  availableTechnicians?: TechnicianItem[];
   onDisburseStockPart?: (
     updatedTicket: RepairTicket,
     newPart: RepairItemPart,
@@ -98,6 +100,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   onOpenPrint,
   inventory = [],
   vehicles = [],
+  availableTechnicians = [],
   onDisburseStockPart,
   onRestockPart
 }) => {
@@ -1072,9 +1075,20 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
                   >
                     <option value="">-- ยังไม่มอบหมายช่าง --</option>
-                    {MECHANIC_LIST.map((m, idx) => (
-                      <option key={idx} value={m}>{m}</option>
-                    ))}
+                    {availableTechnicians && availableTechnicians.length > 0 ? (
+                      availableTechnicians.map((tech) => {
+                        const label = `${tech.name}${tech.nickname ? ` (${tech.nickname})` : ""} - ${tech.roleTitle}`;
+                        return (
+                          <option key={tech.id} value={tech.name}>
+                            {label} ({tech.status === "active" ? "พร้อมงาน" : tech.status === "busy" ? "ติดงาน" : tech.status})
+                          </option>
+                        );
+                      })
+                    ) : (
+                      MECHANIC_LIST.map((m, idx) => (
+                        <option key={idx} value={m}>{m}</option>
+                      ))
+                    )}
                   </select>
                 </div>
 
