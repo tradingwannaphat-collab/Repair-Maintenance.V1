@@ -72,10 +72,10 @@ export const BatteryManagementViewTab: React.FC<BatteryManagementViewTabProps> =
       const q = searchTerm.toLowerCase().trim();
       const matchSearch = 
         !q ||
-        r.licensePlate.toLowerCase().includes(q) ||
+        (r.licensePlate || "").toLowerCase().includes(q) ||
         (r.driverName && r.driverName.toLowerCase().includes(q)) ||
-        r.batteryBrand.toLowerCase().includes(q) ||
-        r.batteryModelOrSize.toLowerCase().includes(q) ||
+        (r.batteryBrand || "").toLowerCase().includes(q) ||
+        (r.batteryModelOrSize || "").toLowerCase().includes(q) ||
         (r.supplierOrShop && r.supplierOrShop.toLowerCase().includes(q)) ||
         (r.notes && r.notes.toLowerCase().includes(q)) ||
         (r.reason && r.reason.toLowerCase().includes(q));

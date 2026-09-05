@@ -159,14 +159,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
   const [historicalMechanicNotes, setHistoricalMechanicNotes] = useState<string>("ซ่อมบำรุงและทดสอบระบบเรียบร้อยตามมาตรฐานความปลอดภัย");
   
   // Granular historical parts list
-  const [historicalParts, setHistoricalParts] = useState<Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unitPrice: number;
-    total: number;
-    postRepairCondition: PostRepairCondition;
-  }>>([]);
+  const [historicalParts, setHistoricalParts] = useState<RepairItemPart[]>([]);
 
   const [newPartName, setNewPartName] = useState("");
   const [newPartQty, setNewPartQty] = useState(1);

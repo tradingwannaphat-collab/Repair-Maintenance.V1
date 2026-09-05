@@ -373,16 +373,17 @@ export const INITIAL_BATTERY_REPLACEMENTS: BatteryReplacementRecord[] = [
 
 // Helper to find latest battery record for a vehicle
 export function getVehicleBatteryRecord(
-  vehicle: VehicleRecord | { id?: string; licensePlate?: string; oldLicensePlate?: string },
+  vehicle: string | VehicleRecord | { id?: string; licensePlate?: string; oldLicensePlate?: string },
   batteryReplacements: BatteryReplacementRecord[] = INITIAL_BATTERY_REPLACEMENTS
 ): BatteryReplacementRecord | undefined {
   if (!vehicle) return undefined;
-  const plateClean = (vehicle.licensePlate || "").replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
-  const oldPlateClean = (vehicle.oldLicensePlate || "").replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
+  const vObj = typeof vehicle === "string" ? { licensePlate: vehicle, id: undefined, oldLicensePlate: undefined } : vehicle;
+  const plateClean = (vObj.licensePlate || "").replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
+  const oldPlateClean = (vObj.oldLicensePlate || "").replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
 
   return batteryReplacements
     .filter((b) => {
-      if (vehicle.id && b.vehicleId === vehicle.id) return true;
+      if (vObj.id && b.vehicleId === vObj.id) return true;
       const bPlateClean = (b.licensePlate || "").replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, "").toLowerCase();
       if (plateClean && bPlateClean && (plateClean.includes(bPlateClean) || bPlateClean.includes(plateClean))) return true;
       if (oldPlateClean && bPlateClean && (oldPlateClean.includes(bPlateClean) || bPlateClean.includes(oldPlateClean))) return true;

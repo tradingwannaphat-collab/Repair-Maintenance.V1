@@ -1766,6 +1766,7 @@ export interface PMScheduleImportResult {
   errors: string[];
   rawCount: number;
   formatType: "detailed_list" | "matrix_12months";
+  detectedFormat?: string;
   summary: {
     totalSchedules: number;
     vehiclesCovered: number;

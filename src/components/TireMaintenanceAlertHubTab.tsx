@@ -86,12 +86,12 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
         return false;
       }
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchPlate = alert.licensePlate.toLowerCase().includes(q);
-        const matchPos = alert.positionNameTh.toLowerCase().includes(q) || alert.positionKey.toLowerCase().includes(q);
-        const matchDept = alert.department.toLowerCase().includes(q);
-        const matchDriver = alert.driverName?.toLowerCase().includes(q);
-        const matchBrand = alert.tireBrand?.toLowerCase().includes(q);
+        const q = searchQuery.toLowerCase().trim();
+        const matchPlate = (alert.licensePlate || "").toLowerCase().includes(q);
+        const matchPos = (alert.positionNameTh || "").toLowerCase().includes(q) || (alert.positionKey || "").toLowerCase().includes(q);
+        const matchDept = (alert.department || "").toLowerCase().includes(q);
+        const matchDriver = (alert.driverName || "").toLowerCase().includes(q);
+        const matchBrand = (alert.tireBrand || "").toLowerCase().includes(q);
         if (!matchPlate && !matchPos && !matchDept && !matchDriver && !matchBrand) {
           return false;
         }

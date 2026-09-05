@@ -39,6 +39,7 @@ import {
   ServiceDirectoryState, 
   RepairCategory,
   TechnicianStatus,
+  VendorStatus,
   ServiceCenterType
 } from "../types";
 
@@ -412,8 +413,8 @@ export const ServiceDirectoryView: React.FC<ServiceDirectoryViewProps> = ({
   };
 
   const handleToggleVendorStatus = (vendor: VendorShopItem) => {
-    const updated = directory.vendors.map((v) =>
-      v.id === vendor.id ? { ...v, status: v.status === "active" ? "inactive" : "active" } : v
+    const updated: VendorShopItem[] = directory.vendors.map((v) =>
+      v.id === vendor.id ? { ...v, status: (v.status === "active" ? "inactive" : "active") as VendorStatus } : v
     );
     onUpdateDirectory(
       { ...directory, vendors: updated },
@@ -422,8 +423,8 @@ export const ServiceDirectoryView: React.FC<ServiceDirectoryViewProps> = ({
   };
 
   const handleToggleCenterStatus = (center: ServiceCenterItem) => {
-    const updated = directory.serviceCenters.map((c) =>
-      c.id === center.id ? { ...c, status: c.status === "active" ? "inactive" : "active" } : c
+    const updated: ServiceCenterItem[] = directory.serviceCenters.map((c) =>
+      c.id === center.id ? { ...c, status: (c.status === "active" ? "inactive" : "active") as "active" | "inactive" } : c
     );
     onUpdateDirectory(
       { ...directory, serviceCenters: updated },

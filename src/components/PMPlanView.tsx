@@ -155,14 +155,14 @@ export const PMPlanView: React.FC<PMPlanViewProps> = ({
       if (selectedPMTypeFilter !== "all" && item.pmType !== selectedPMTypeFilter) return false;
 
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchPlate = item.licensePlate.toLowerCase().includes(q);
+        const q = searchQuery.toLowerCase().trim();
+        const matchPlate = (item.licensePlate || "").toLowerCase().includes(q);
         const matchErp = (item.erpNo || "").toLowerCase().includes(q);
-        const matchBrand = item.vehicleBrand.toLowerCase().includes(q);
-        const matchModel = item.vehicleModel.toLowerCase().includes(q);
+        const matchBrand = (item.vehicleBrand || "").toLowerCase().includes(q);
+        const matchModel = (item.vehicleModel || "").toLowerCase().includes(q);
         const matchDriver = (item.driverName || "").toLowerCase().includes(q);
         const matchTech = (item.assignedTechnician || "").toLowerCase().includes(q);
-        const matchCode = item.pmPlanCode.toLowerCase().includes(q);
+        const matchCode = (item.pmPlanCode || "").toLowerCase().includes(q);
         if (!matchPlate && !matchErp && !matchBrand && !matchModel && !matchDriver && !matchTech && !matchCode) {
           return false;
         }
@@ -235,12 +235,13 @@ export const PMPlanView: React.FC<PMPlanViewProps> = ({
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
       list = list.filter(v => 
-        v.licensePlate.toLowerCase().includes(q) ||
+        (v.licensePlate || "").toLowerCase().includes(q) ||
+        (v.oldLicensePlate || "").toLowerCase().includes(q) ||
         (v.erpNo || "").toLowerCase().includes(q) ||
-        (v.vehicleBrand || "").toLowerCase().includes(q) ||
-        (v.vehicleModel || "").toLowerCase().includes(q) ||
+        ((v as any).vehicleBrand || v.brand || "").toLowerCase().includes(q) ||
+        ((v as any).vehicleModel || v.model || "").toLowerCase().includes(q) ||
         (v.driverName || "").toLowerCase().includes(q)
       );
     }

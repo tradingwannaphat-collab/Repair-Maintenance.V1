@@ -122,10 +122,10 @@ export const MaintenanceIntervalMatrixView: React.FC<MaintenanceIntervalMatrixVi
   const filteredAlerts = useMemo(() => {
     return evaluatedAlerts.filter((item) => {
       if (vehicleSearch.trim()) {
-        const q = vehicleSearch.toLowerCase();
-        const matchPlate = item.licensePlate.toLowerCase().includes(q);
-        const matchBrand = item.vehicleBrand.toLowerCase().includes(q);
-        const matchModel = item.vehicleModel.toLowerCase().includes(q);
+        const q = vehicleSearch.toLowerCase().trim();
+        const matchPlate = (item.licensePlate || "").toLowerCase().includes(q);
+        const matchBrand = (item.vehicleBrand || "").toLowerCase().includes(q);
+        const matchModel = (item.vehicleModel || "").toLowerCase().includes(q);
         if (!matchPlate && !matchBrand && !matchModel) return false;
       }
       if (statusFilter !== "all" && item.alertStatus !== statusFilter) {

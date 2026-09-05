@@ -131,16 +131,16 @@ export const TicketTracker: React.FC<TicketTrackerProps> = ({
       const q = searchQuery.toLowerCase().trim();
       if (q) {
         const matchSearch = 
-          t.licensePlate.toLowerCase().includes(q) ||
-          t.ticketNumber.toLowerCase().includes(q) ||
-          t.vehicleBrand.toLowerCase().includes(q) ||
-          t.vehicleModel.toLowerCase().includes(q) ||
-          t.requesterName.toLowerCase().includes(q) ||
-          t.department.toLowerCase().includes(q) ||
+          (t.licensePlate || "").toLowerCase().includes(q) ||
+          (t.ticketNumber || "").toLowerCase().includes(q) ||
+          (t.vehicleBrand || "").toLowerCase().includes(q) ||
+          (t.vehicleModel || "").toLowerCase().includes(q) ||
+          (t.requesterName || "").toLowerCase().includes(q) ||
+          (t.department || "").toLowerCase().includes(q) ||
           (t.assignedMechanic && t.assignedMechanic.toLowerCase().includes(q)) ||
-          t.symptoms.toLowerCase().includes(q) ||
+          (t.symptoms || "").toLowerCase().includes(q) ||
           (t.subCategoryName && t.subCategoryName.toLowerCase().includes(q)) ||
-          (t.issues && t.issues.some(i => i.title.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)));
+          (t.issues && t.issues.some(i => (i.title || "").toLowerCase().includes(q) || (i.description || "").toLowerCase().includes(q)));
         if (!matchSearch) return false;
       }
 

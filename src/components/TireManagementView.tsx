@@ -357,11 +357,13 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   const filteredVehicles = useMemo(() => {
     return vehicles.filter((v) => {
       if (vehicleSearch.trim()) {
-        const q = vehicleSearch.toLowerCase();
-        const matchPlate = v.licensePlate.toLowerCase().includes(q);
-        const matchBrand = v.brand.toLowerCase().includes(q);
-        const matchModel = v.model.toLowerCase().includes(q);
-        if (!matchPlate && !matchBrand && !matchModel) return false;
+        const q = vehicleSearch.toLowerCase().trim();
+        const matchPlate = (v.licensePlate || "").toLowerCase().includes(q) || (v.oldLicensePlate || "").toLowerCase().includes(q);
+        const matchBrand = (v.vehicleBrand || v.brand || "").toLowerCase().includes(q);
+        const matchModel = (v.vehicleModel || v.model || "").toLowerCase().includes(q);
+        const matchDept = (v.department || "").toLowerCase().includes(q);
+        const matchDriver = (v.driverName || "").toLowerCase().includes(q);
+        if (!matchPlate && !matchBrand && !matchModel && !matchDept && !matchDriver) return false;
       }
       if (vehicleTypeFilter !== "all" && v.vehicleType !== vehicleTypeFilter) {
         return false;
@@ -382,12 +384,16 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
   const filteredHistory = useMemo(() => {
     return replacements.filter((r) => {
       if (historySearch.trim()) {
-        const q = historySearch.toLowerCase();
-        const matchPlate = r.licensePlate.toLowerCase().includes(q);
-        const matchBrand = r.tireBrand.toLowerCase().includes(q);
-        const matchPos = r.positionNameTh.toLowerCase().includes(q);
+        const q = historySearch.toLowerCase().trim();
+        const matchPlate = (r.licensePlate || "").toLowerCase().includes(q);
+        const matchBrand = (r.tireBrand || "").toLowerCase().includes(q);
+        const matchPos = (r.positionNameTh || "").toLowerCase().includes(q) || (r.positionKey || "").toLowerCase().includes(q);
         const matchSerial = (r.tireSerial || "").toLowerCase().includes(q);
-        if (!matchPlate && !matchBrand && !matchPos && !matchSerial) return false;
+        const matchModel = (r.tireModel || "").toLowerCase().includes(q);
+        const matchTech = (r.technicianName || "").toLowerCase().includes(q);
+        const matchShop = (r.supplierOrShop || "").toLowerCase().includes(q);
+        const matchNotes = (r.notes || "").toLowerCase().includes(q);
+        if (!matchPlate && !matchBrand && !matchPos && !matchSerial && !matchModel && !matchTech && !matchShop && !matchNotes) return false;
       }
       if (historyBrandFilter !== "all" && r.tireBrand !== historyBrandFilter) {
         return false;
@@ -816,8 +822,18 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                   placeholder="ค้นหาทะเบียน, ยี่ห้อ, รุ่น..."
                   value={vehicleSearch}
                   onChange={(e) => setVehicleSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
+                {vehicleSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setVehicleSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="ล้างคำค้นหา"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Tire Status Filter Chips */}
@@ -864,11 +880,12 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                   </div>
                 ) : (
                   filteredVehicles.map((v) => {
-                    const isSelected = v.id === selectedVehicle.id;
+                    const isSelected = selectedVehicle ? v.id === selectedVehicle.id : false;
                     const measurements = getVehicleTireMeasurements(v, replacements);
                     const hasCritical = measurements.some((m) => m.alertLevel === "critical");
                     const hasWarning = measurements.some((m) => m.alertLevel === "warning");
-                    const minDepth = Math.min(...measurements.map((m) => m.treadDepthMm));
+                    const minDepth = measurements.length > 0 ? Math.min(...measurements.map((m) => m.treadDepthMm)) : 0;
+                    const brandModelStr = [v.vehicleBrand || v.brand, v.vehicleModel || v.model].filter(Boolean).join(" ");
 
                     return (
                       <div
@@ -894,13 +911,13 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                         </div>
 
                         <div className="text-xs text-slate-600 mt-1 flex items-center justify-between">
-                          <span>{v.brand} {v.model}</span>
+                          <span>{brandModelStr || "-"}</span>
                           <span className="text-slate-400 text-[11px]">{VEHICLE_TYPE_LABELS[v.vehicleType] || v.vehicleType}</span>
                         </div>
 
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-                          <span>ไมล์: <strong className="text-slate-700 font-mono">{v.currentMileage.toLocaleString()} กม.</strong></span>
-                          <span>ดอกยางต่ำสุด: <strong className={`font-mono font-bold ${minDepth < 2.0 ? 'text-rose-600' : minDepth <= 3.5 ? 'text-amber-600' : 'text-emerald-600'}`}>{minDepth} mm</strong></span>
+                          <span>ไมล์: <strong className="text-slate-700 font-mono">{(v.currentMileage || 0).toLocaleString()} กม.</strong></span>
+                          <span>ดอกยางต่ำสุด: <strong className={`font-mono font-bold ${minDepth < 2.0 ? 'text-rose-600' : minDepth <= 3.5 ? 'text-amber-600' : 'text-emerald-600'}`}>{minDepth === Infinity ? 0 : minDepth} mm</strong></span>
                         </div>
                       </div>
                     );
@@ -922,7 +939,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                     {VEHICLE_TYPE_LABELS[selectedVehicle.vehicleType] || selectedVehicle.vehicleType}
                   </span>
                   <span className="text-xs text-slate-500">
-                    แผนก: <strong className="text-slate-700">{selectedVehicle.department}</strong>
+                    แผนก: <strong className="text-slate-700">{selectedVehicle.department || "ทั่วไป"}</strong>
                   </span>
                 </div>
 
@@ -931,12 +948,12 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
                     {selectedVehicle.licensePlate}
                   </h2>
                   <span className="text-slate-600 text-sm font-semibold">
-                    {selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.year})
+                    {[selectedVehicle.vehicleBrand || selectedVehicle.brand, selectedVehicle.vehicleModel || selectedVehicle.model].filter(Boolean).join(" ")} {selectedVehicle.year ? `(${selectedVehicle.year})` : ""}
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-2">
-                  <span>เลขไมล์ปัจจุบัน: <strong className="text-slate-900 font-mono font-bold">{selectedVehicle.currentMileage.toLocaleString()} กม.</strong></span>
+                  <span>เลขไมล์ปัจจุบัน: <strong className="text-slate-900 font-mono font-bold">{(selectedVehicle.currentMileage || 0).toLocaleString()} กม.</strong></span>
                   <span>•</span>
                   <span>จำนวนตำแหน่งล้อ: <strong className="text-slate-900 font-bold">{currentPositionsConfig.length} ตำแหน่ง</strong></span>
                   <span>•</span>

@@ -18,7 +18,7 @@ export type RepairStatus =
   | 'completed'     // ซ่อมเสร็จสมบูรณ์ / พร้อมส่งมอบ
   | 'cancelled';    // ยกเลิก
 
-export type Priority = 'critical' | 'high' | 'medium' | 'low';
+export type Priority = 'critical' | 'high' | 'medium' | 'low' | 'urgent';
 
 export type VehicleType = 
   | 'tractor_6w'      // หัวลาก 6 ล้อ
@@ -138,6 +138,11 @@ export interface BreakdownLocation {
 export interface RepairTicket {
   id: string;
   ticketNumber: string;
+  vehicleId?: string; // Optional vehicle ID reference
+  title?: string; // Optional ticket title
+  problemDescription?: string; // Optional problem description alias
+  rating?: number; // Optional quick rating
+  reportedAt?: string; // Optional reported date alias
   createdAt: string; // ISO date string
   updatedAt: string;
   licensePlate: string;
@@ -177,6 +182,7 @@ export interface RepairTicket {
 
 export interface CategoryMeta {
   id: RepairCategory;
+  name?: string; // Optional name alias
   nameTh: string;
   nameEn: string;
   iconName: string;
@@ -221,10 +227,13 @@ export interface VehicleRecord {
   province: string;
   vehicleBrand: string;
   vehicleModel: string;
+  brand?: string; // Alias for vehicleBrand
+  model?: string; // Alias for vehicleModel
   vehicleType: VehicleType;
   department: string;
   driverName: string;
   driverId?: string;
+  driverPhone?: string;
   currentMileage: number;
   status: VehicleStatus;
   color?: string; // สีตัวรถ
@@ -268,6 +277,7 @@ export interface InventoryItem {
   unitCost: number; // ราคาทุน
   unitSellingPrice?: number; // ราคาเบิก/คิดมูลค่างาน
   locationRack?: string; // ตำแหน่งชั้นวาง e.g. "A-01", "B-03"
+  location?: string; // Optional alias for locationRack
   supplier?: string;
   brand?: string; // ยี่ห้อ/แบรนด์อะไหล่
   specification?: string; // สเปก/รุ่นย่อย
@@ -633,10 +643,15 @@ export interface BatteryReplacementRecord {
   previousQuantity?: number; // e.g. 2
   batteryBrand: string; // e.g. "FB"
   batteryModelOrSize: string; // e.g. "F135L", "N120=115F511"
+  batteryModel?: string; // Optional alias for batteryModelOrSize
   quantity: number; // e.g. 2
   cost: number; // e.g. 5400, 8000
   supplierOrShop: string; // e.g. "ส.รวมยนต์"
   replacedMileage?: number; // e.g. 633063
+  replacedDateTh?: string; // Optional date in Thai string format
+  voltageSpec?: string; // Optional voltage specification e.g. "12V 100Ah"
+  voltageVolts?: number; // Optional measured voltage e.g. 12.6
+  healthStatusSoh?: string; // Optional SOH status e.g. "98%"
   reason?: string; // e.g. "เกิดจากเสื่อมสภาพเก็บไฟไม่อยู่", "แบตเตอรี่ระเบิด..."
   status: 'active' | 'replaced' | 'scrapped';
   notes?: string;

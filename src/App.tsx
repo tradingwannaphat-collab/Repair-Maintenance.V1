@@ -497,7 +497,7 @@ export default function App() {
   // Directory Update Handler with Multi-User Realtime Broadcast
   const handleUpdateDirectory = useCallback((updated: ServiceDirectoryState, actionDesc?: string) => {
     setDirectory(updated);
-    broadcastMutation("directory", updated, actionDesc || "อัปเดตข้อมูลทำเนียบช่าง/ร้านค้า/ศูนย์ซ่อม");
+    broadcastMutation("directory", updated, "ทำเนียบช่างและร้านค้า", actionDesc || "อัปเดตข้อมูลทำเนียบช่าง/ร้านค้า/ศูนย์ซ่อม", "TICKET_UPDATED");
   }, [broadcastMutation]);
 
   // Count active repair tickets assigned to each mechanic
@@ -1325,7 +1325,10 @@ export default function App() {
           <MaintenanceIntervalMatrixView
             vehicles={vehicles}
             tickets={tickets}
-            onRequestRepairForVehicle={handleRequestRepairForVehicle}
+            onRequestRepairForVehicle={(plate) => {
+              const v = vehicles.find((veh) => veh.licensePlate === plate);
+              if (v) handleRequestRepairForVehicle(v);
+            }}
             onOpenVehicleRepairHistory={(plate) => {
               setSelectedPlateForRepairHistory(plate);
               setCurrentView("repair_history");
@@ -1338,7 +1341,10 @@ export default function App() {
           <TireManagementView
             vehicles={vehicles}
             tickets={tickets}
-            onRequestRepairForVehicle={handleRequestRepairForVehicle}
+            onRequestRepairForVehicle={(plate) => {
+              const v = vehicles.find((veh) => veh.licensePlate === plate);
+              if (v) handleRequestRepairForVehicle(v);
+            }}
             onOpenVehicleRepairHistory={(plate) => {
               setSelectedPlateForRepairHistory(plate);
               setCurrentView("repair_history");
