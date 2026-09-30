@@ -29,11 +29,14 @@ import {
   History,
   Gauge,
   CircleDot,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ShieldCheck,
+  Globe
 } from "lucide-react";
 import { AppNavView, CollabUser, LivePresenceUser } from "../types";
 import { TnbLogo } from "./TnbLogo";
-import { Cloud, RefreshCw, CheckCircle, Users } from "lucide-react";
+import { KochLogo } from "./KochLogo";
+import { Cloud, RefreshCw, CheckCircle, Users, MessageSquare } from "lucide-react";
 import { CollabHeaderWidget } from "./CollabHeaderWidget";
 
 interface NavbarProps {
@@ -49,6 +52,9 @@ interface NavbarProps {
   isCloudConnected?: boolean;
   isSyncing?: boolean;
   lastSyncedTime?: string | null;
+  currentBrand?: "tnb" | "koch" | "all";
+  onSelectBrand?: (brand: "tnb" | "koch" | "all") => void;
+  onOpenLineSyncModal?: () => void;
   onManualSync?: () => void;
   onClearAllData: () => void;
   onLoadDemoData: () => void;
@@ -63,6 +69,7 @@ interface NavbarProps {
   collabOnlineUsers?: LivePresenceUser[];
   isWsConnected?: boolean;
   onOpenCollabModal?: () => void;
+  onOpenKochModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -78,6 +85,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCloudConnected = true,
   isSyncing = false,
   lastSyncedTime = null,
+  currentBrand = "all",
+  onSelectBrand,
+  onOpenLineSyncModal,
+  onOpenKochModal,
   onManualSync,
   onClearAllData,
   onLoadDemoData,
@@ -160,6 +171,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       badgeColor: "bg-cyan-400 text-slate-950 font-bold"
     },
     {
+      id: "safety_equipment" as AppNavView,
+      label: "ใบเซ็นรับอุปกรณ์เซฟตี้ประจำรถ",
+      shortLabel: "อุปกรณ์เซฟตี้ติดรถ",
+      icon: ShieldCheck,
+      badge: "10 รายการ",
+      badgeColor: "bg-emerald-400 text-slate-950 font-bold"
+    },
+    {
       id: "pm_plan" as AppNavView,
       label: "แผน PM รถ เดือน/ปี",
       shortLabel: "แผน PM",
@@ -232,24 +251,87 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 bg-[#0F172A] text-white shadow-md border-b border-slate-800">
       <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-2">
-          {/* Brand Logo - TNB Logistics */}
-          <div 
-            className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer select-none shrink-0"
-            onClick={() => onSelectView("requester")}
-            id="brand-logo-btn"
-          >
-            <div className="bg-white px-2 py-1 rounded-lg shadow-sm flex items-center justify-center">
-              <TnbLogo variant="blue" size="sm" showSubtitle={false} />
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5 sm:space-x-2">
-                <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">TNB Logistics</span>
-                <span className="hidden xl:inline-block text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  Fleet & Workshop
-                </span>
+          {/* Brand Logo & Multi-Company Switcher (TNB Logistics & Koch Packaging) */}
+          <div className="flex items-center space-x-2 sm:space-x-3 select-none shrink-0">
+            <div 
+              className="flex items-center space-x-2 sm:space-x-2.5 cursor-pointer"
+              onClick={() => onSelectView("requester")}
+              id="brand-logo-btn"
+            >
+              <div className="bg-white px-2 py-1 rounded-lg shadow-sm flex items-center justify-center">
+                {currentBrand === "koch" ? (
+                  <KochLogo variant="red" size="sm" showSubtitle={false} />
+                ) : (
+                  <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+                )}
               </div>
-              <p className="text-[10px] text-slate-400 font-normal hidden 2xl:block">ระบบแจ้งซ่อมบำรุง & คลังอะไหล่ยานพาหนะ</p>
+              <div>
+                <div className="flex items-center space-x-1.5 sm:space-x-2">
+                  <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">
+                    {currentBrand === "koch" ? "KOCH Packaging" : currentBrand === "all" ? "TNB & KOCH" : "TNB Logistics"}
+                  </span>
+                  <span className={`hidden xl:inline-block text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                    currentBrand === "koch" ? "bg-rose-500/20 text-rose-300 border border-rose-500/40" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                  }`}>
+                    {currentBrand === "koch" ? "@kochpackaging" : "Fleet & Workshop"}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-normal hidden 2xl:block">
+                  {currentBrand === "koch" ? "ระบบจัดการขนส่งกล่องบรรจุภัณฑ์ & ซ่อมบำรุง" : "ระบบแจ้งซ่อมบำรุง & คลังอะไหล่ยานพาหนะ"}
+                </p>
+              </div>
             </div>
+
+            {/* Quick Brand Switcher Pills */}
+            {onSelectBrand && (
+              <div className="hidden sm:flex items-center bg-slate-900/90 p-0.5 rounded-lg border border-slate-700/80 text-[11px] font-bold shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => onSelectBrand("tnb")}
+                  className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                    currentBrand === "tnb" ? "bg-blue-600 text-white shadow-xs font-bold" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  title="สลับไปยังระบบ TNB Logistics"
+                >
+                  TNB
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectBrand("koch")}
+                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                    currentBrand === "koch" ? "bg-rose-600 text-white shadow-xs font-extrabold" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  title="สลับไปยังระบบ Koch Packaging (@kochpackaging / @030avkyb)"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                  KOCH
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectBrand("all")}
+                  className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                    currentBrand === "all" ? "bg-slate-700 text-white shadow-xs font-bold" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  title="แสดงกองรถและงานซ่อมรวมทุกบริษัท"
+                >
+                  รวม
+                </button>
+              </div>
+            )}
+
+            {/* Dedicated Koch Web Launcher Button */}
+            {onOpenKochModal && (
+              <button
+                type="button"
+                id="btn-nav-open-koch-modal"
+                onClick={onOpenKochModal}
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white shadow-xs border border-rose-400/30 transition-all cursor-pointer"
+                title="คลิกเพื่อดูข้อมูลและเปิดเว็บ KOCH Packaging (@kochpackaging) แยกหน้าต่าง"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                <span>เว็บ KOCH (ใหม่)</span>
+              </button>
+            )}
           </div>
 
           {/* Desktop Responsive Navigation Bar */}
@@ -334,6 +416,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>ตรวจประจำวัน</span>
               <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-cyan-400 text-slate-950 font-bold hidden xl:inline-block">
                 21 ข้อ
+              </span>
+            </button>
+
+            {/* 5.1 อุปกรณ์เซฟตี้ติดรถ & ใบเซ็นรับ */}
+            <button
+              id="nav-tab-safety_equipment"
+              onClick={() => onSelectView("safety_equipment")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                currentView === "safety_equipment"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/60"
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>อุปกรณ์เซฟตี้</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-400 text-slate-950 font-bold hidden xl:inline-block">
+                ใบเซ็นรับ
               </span>
             </button>
 
@@ -556,6 +655,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
+            {/* Quick LINE OA button */}
+            {onOpenLineSyncModal && (
+              <button
+                id="btn-nav-line-sync"
+                onClick={onOpenLineSyncModal}
+                className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 border shadow-xs cursor-pointer ${
+                  currentBrand === "koch"
+                    ? "bg-rose-950/60 hover:bg-rose-900 text-rose-200 border-rose-500/40"
+                    : "bg-emerald-950/60 hover:bg-emerald-900 text-emerald-200 border-emerald-500/40"
+                }`}
+                title={currentBrand === "koch" ? "ซิงค์เลขไมล์จาก LINE OA: @kochpackaging (@030avkyb)" : "ระบบดึงเลขไมล์จาก LINE อัตโนมัติ"}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden xl:inline text-xs">
+                  {currentBrand === "koch" ? "LINE: @kochpackaging" : "LINE Sync ไมล์"}
+                </span>
+              </button>
+            )}
+
             <button
               id="btn-nav-quick-search"
               onClick={onOpenSearchModal}
@@ -670,6 +788,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     )}
 
+                    {onOpenKochModal && (
+                      <button
+                        onClick={() => {
+                          setIsDataMenuOpen(false);
+                          onOpenKochModal();
+                        }}
+                        id="btn-open-koch-modal-menu"
+                        className="w-full text-left px-3 py-2 text-xs text-rose-300 hover:text-white hover:bg-rose-600/30 rounded-lg flex items-center space-x-2.5 transition-colors font-medium border border-rose-500/20 bg-rose-950/20 cursor-pointer"
+                      >
+                        <Globe className="w-4 h-4 text-rose-400 shrink-0" />
+                        <div>
+                          <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                            <span>ระบบเว็บ KOCH Packaging (เปิดหน้าต่างใหม่ / แยกเว็บ)</span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-500 text-white font-bold">ใหม่</span>
+                          </div>
+                          <div className="text-[10px] text-rose-100/70">เปิดเว็บ Koch แยกแท็บ, คัดลอกลิงก์, หรือดาวน์โหลดชุดตั้งค่า Standalone</div>
+                        </div>
+                      </button>
+                    )}
+
                     {onRestoreStandardData && (
                       <button
                         onClick={() => {
@@ -769,11 +907,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
                 <div className="flex items-center space-x-2.5">
                   <div className="bg-white px-2 py-1 rounded-lg">
-                    <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+                    {currentBrand === "koch" ? (
+                      <KochLogo variant="red" size="sm" showSubtitle={false} />
+                    ) : (
+                      <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+                    )}
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm text-white">TNB Logistics</h3>
-                    <p className="text-[10px] text-slate-400">ระบบซ่อมบำรุง & ตรวจสภาพรถ</p>
+                    <h3 className="font-extrabold text-sm text-white">
+                      {currentBrand === "koch" ? "KOCH Packaging" : currentBrand === "all" ? "TNB & KOCH" : "TNB Logistics"}
+                    </h3>
+                    <p className="text-[10px] text-slate-400">
+                      {currentBrand === "koch" ? "ระบบจัดการขนส่งกล่อง & ซ่อมบำรุง" : "ระบบซ่อมบำรุง & ตรวจสภาพรถ"}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -783,6 +929,62 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* Mobile Brand Switcher Bar */}
+              {onSelectBrand && (
+                <div className="p-3 bg-slate-900 border-b border-slate-800">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>เลือกแบรนด์ / เว็บไซต์</span>
+                    {onOpenKochModal && (
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          onOpenKochModal();
+                        }}
+                        className="text-rose-400 hover:text-rose-300 text-[10px] font-bold underline cursor-pointer"
+                      >
+                        ข้อมูลเว็บ Koch &gt;
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">
+                    <button
+                      onClick={() => {
+                        onSelectBrand("tnb");
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                        currentBrand === "tnb" ? "bg-blue-600 text-white border-blue-500 shadow-sm" : "bg-slate-800 text-slate-300 border-slate-700"
+                      }`}
+                    >
+                      TNB
+                    </button>
+                    <button
+                      onClick={() => {
+                        onSelectBrand("koch");
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`py-1.5 rounded-lg border text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                        currentBrand === "koch" ? "bg-rose-600 text-white border-rose-500 shadow-sm" : "bg-slate-800 text-slate-300 border-slate-700"
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                      KOCH
+                    </button>
+                    <button
+                      onClick={() => {
+                        onSelectBrand("all");
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                        currentBrand === "all" ? "bg-slate-700 text-white border-slate-600 shadow-sm" : "bg-slate-800 text-slate-300 border-slate-700"
+                      }`}
+                    >
+                      รวม 2 บ.
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Quick Actions at Top of Drawer */}
               <div className="p-3 border-b border-slate-800/80 bg-slate-900/50 space-y-2">

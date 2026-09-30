@@ -23,6 +23,8 @@ import { DailyInspectionView } from "./components/DailyInspectionView";
 import { MaintenanceIntervalMatrixView } from "./components/MaintenanceIntervalMatrixView";
 import { VehicleRepairHistoryView } from "./components/VehicleRepairHistoryView";
 import { TireManagementView } from "./components/TireManagementView";
+import { VehicleSafetyEquipmentView } from "./components/safety/VehicleSafetyEquipmentView";
+import { INITIAL_SAFETY_HANDOVERS, SAFETY_HANDOVERS_STORAGE_KEY } from "./data/vehicleSafetyEquipmentData";
 import { INITIAL_TICKETS, DEMO_SAMPLE_TICKETS } from "./data/mockData";
 import { 
   INITIAL_VEHICLES, 
@@ -49,10 +51,13 @@ import {
   GoodsRequisitionRecord,
   PMMonthlyScheduleItem,
   DailyVehicleInspectionRecord,
+  VehicleSafetyHandoverRecord,
   ServiceDirectoryState,
-  CollabUser
+  CollabUser,
+  MileageLogEntry
 } from "./types";
 import { TnbLogo } from "./components/TnbLogo";
+import { KochLogo } from "./components/KochLogo";
 import { ShareModal } from "./components/ShareModal";
 import { normalizeLicensePlate } from "./utils/excelImportExport";
 import { 
@@ -63,6 +68,18 @@ import {
 } from "./utils/fleetSyncService";
 
 import { TNB_STANDARD_9_TICKETS } from "./data/tnbStandardTickets9";
+import { KochStandaloneWebModal } from "./components/KochStandaloneWebModal";
+import { LineOdometerSyncModal } from "./components/LineOdometerSyncModal";
+import { VehicleMileageHistoryModal } from "./components/VehicleMileageHistoryModal";
+import { 
+  KOCH_FULL_FLEET, 
+  KOCH_INITIAL_TICKETS, 
+  KOCH_INITIAL_PM_SCHEDULES, 
+  KOCH_INITIAL_DAILY_INSPECTIONS, 
+  KOCH_INITIAL_SAFETY_HANDOVERS,
+  KOCH_INITIAL_INVENTORY 
+} from "./data/kochStandardData";
+import { generateInitialMileageLogs } from "./data/initialMileageLogData";
 
 const TICKETS_STORAGE_KEY = "tnb_fleet_clean_tickets_v9";
 const VEHICLES_STORAGE_KEY = "tnb_fleet_clean_vehicles_v108";
@@ -72,6 +89,8 @@ const REQUISITIONS_STORAGE_KEY = "tnb_fleet_clean_requisitions_v5";
 const PM_SCHEDULES_STORAGE_KEY = "tnb_fleet_clean_pm_schedules_v1";
 const DAILY_INSPECTIONS_STORAGE_KEY = "tnb_fleet_clean_daily_inspections_v1";
 const DIRECTORY_STORAGE_KEY = "tnb_fleet_clean_directory_v1";
+const MILEAGE_LOGS_STORAGE_KEY = "tnb_fleet_clean_mileage_logs_v1";
+const ACTIVE_BRAND_STORAGE_KEY = "app_active_brand_choice";
 
 export default function App() {
   // Navigation View with URL param support & default to Work Operations Hub
@@ -80,7 +99,7 @@ export default function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const viewParam = urlParams.get("view");
       const validViews: AppNavView[] = [
-        "requester", "worker", "vehicles", "daily_inspection",
+        "requester", "worker", "vehicles", "daily_inspection", "safety_equipment",
         "pm_plan", "part_list", "receiving", "requisition", "workflow", "directory",
         "maintenance_intervals", "repair_history", "tire_management"
       ];
@@ -115,68 +134,157 @@ export default function App() {
   const isInitialMount = useRef(true);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Tickets State
+  // Brand / Multi-Company Portal State
+  const [currentBrand, setCurrentBrand] = useState<"tnb" | "koch" | "all">(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const brandParam = urlParams.get("brand")?.toLowerCase();
+      if (brandParam === "koch" || brandParam === "tnb" || brandParam === "all") {
+        return brandParam as "tnb" | "koch" | "all";
+      }
+      const saved = localStorage.getItem(ACTIVE_BRAND_STORAGE_KEY);
+      if (saved === "koch" || saved === "tnb" || saved === "all") {
+        return saved as "tnb" | "koch" | "all";
+      }
+    } catch (e) {}
+    return "koch"; // Default to Koch as requested by user!
+  });
+
+  // Sync brand with URL query & document title
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("brand", currentBrand);
+      window.history.replaceState(null, "", url.toString());
+      localStorage.setItem(ACTIVE_BRAND_STORAGE_KEY, currentBrand);
+      if (currentBrand === "koch") {
+        document.title = "KOCH Packaging - ระบบแจ้งซ่อมบำรุงและศูนย์ปฏิบัติการกองรถ";
+      } else if (currentBrand === "tnb") {
+        document.title = "TNB Logistics - ระบบแจ้งซ่อมและศูนย์ปฏิบัติการช่างยานพาหนะ";
+      } else {
+        document.title = "TNB & KOCH - ศูนย์บริหารกองรถและซ่อมบำรุงกลุ่มบริษัท";
+      }
+    } catch (e) {}
+  }, [currentBrand]);
+
+  // Tickets State (Merged TNB and KOCH Standard Tickets)
   const [tickets, setTickets] = useState<RepairTicket[]>(() => {
     try {
       const saved = localStorage.getItem(TICKETS_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(t => t.id.startsWith("TK-KC-") || t.ticketNumber?.startsWith("KOCH"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_INITIAL_TICKETS];
+          }
+          return parsed;
+        }
+      }
     } catch (e) {
       console.error("Error reading tickets localStorage:", e);
     }
-    return INITIAL_TICKETS;
+    return [...INITIAL_TICKETS, ...KOCH_INITIAL_TICKETS];
   });
 
-  // PM Schedules State
+  // PM Schedules State (Merged TNB and KOCH)
   const [pmSchedules, setPmSchedules] = useState<PMMonthlyScheduleItem[]>(() => {
     try {
       const saved = localStorage.getItem(PM_SCHEDULES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(p => p.id.startsWith("PM-KC-"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_INITIAL_PM_SCHEDULES];
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       console.error("Error reading PM schedules localStorage:", e);
     }
-    return INITIAL_PM_SCHEDULES_2026;
+    return [...INITIAL_PM_SCHEDULES_2026, ...KOCH_INITIAL_PM_SCHEDULES];
   });
 
-  // Daily Inspection Records State
+  // Daily Inspection Records State (Merged TNB and KOCH)
   const [dailyInspections, setDailyInspections] = useState<DailyVehicleInspectionRecord[]>(() => {
     try {
       const saved = localStorage.getItem(DAILY_INSPECTIONS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(d => d.id.startsWith("DCI-KC-"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_INITIAL_DAILY_INSPECTIONS];
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       console.error("Error reading daily inspections localStorage:", e);
     }
-    return INITIAL_DAILY_INSPECTIONS;
+    return [...INITIAL_DAILY_INSPECTIONS, ...KOCH_INITIAL_DAILY_INSPECTIONS];
   });
 
-  // Vehicles State
+  // Vehicle Safety Equipment Handover Records State (Merged TNB and KOCH)
+  const [safetyHandovers, setSafetyHandovers] = useState<VehicleSafetyHandoverRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(SAFETY_HANDOVERS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(s => s.id.startsWith("SAF-KC-"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_INITIAL_SAFETY_HANDOVERS];
+          }
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error("Error reading safety handovers localStorage:", e);
+    }
+    return [...INITIAL_SAFETY_HANDOVERS, ...KOCH_INITIAL_SAFETY_HANDOVERS];
+  });
+
+  // Vehicles State (Merged 108 TNB vehicles + 10 KOCH vehicles)
   const [vehicles, setVehicles] = useState<VehicleRecord[]>(() => {
     try {
       const saved = localStorage.getItem(VEHICLES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(v => (v.carrierCompany || "").toUpperCase() === "KOCH" || v.id.startsWith("KC-"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_FULL_FLEET];
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       console.error("Error reading vehicles localStorage:", e);
     }
-    return FULL_TNB_FLEET_DATA;
+    return [...FULL_TNB_FLEET_DATA, ...KOCH_FULL_FLEET];
   });
 
-  // Inventory State
+  // Inventory State (Merged TNB + KOCH parts)
   const [inventory, setInventory] = useState<InventoryItem[]>(() => {
     try {
       const saved = localStorage.getItem(INVENTORY_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasKoch = parsed.some(i => i.id.startsWith("INV-KC-"));
+          if (!hasKoch) {
+            return [...parsed, ...KOCH_INITIAL_INVENTORY];
+          }
+          return parsed;
+        }
+      }
     } catch (e) {
       console.error("Error reading inventory localStorage:", e);
     }
-    return INITIAL_INVENTORY_ITEMS;
+    return [...INITIAL_INVENTORY_ITEMS, ...KOCH_INITIAL_INVENTORY];
   });
 
   // Goods Receipts State
@@ -245,6 +353,8 @@ export default function App() {
         setPmSchedules(data);
       } else if (entity === "dailyInspections") {
         setDailyInspections(data);
+      } else if (entity === "safetyHandovers") {
+        setSafetyHandovers(data);
       }
     },
     onFullStateSync: (state) => {
@@ -256,6 +366,7 @@ export default function App() {
       if (state.requisitions) setRequisitions(state.requisitions);
       if (state.pmSchedules) setPmSchedules(state.pmSchedules);
       if (state.dailyInspections) setDailyInspections(state.dailyInspections);
+      if (state.safetyHandovers) setSafetyHandovers(state.safetyHandovers);
     }
   });
 
@@ -271,6 +382,139 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isExportBackupModalOpen, setIsExportBackupModalOpen] = useState(false);
   const [selectedPlateForRepairHistory, setSelectedPlateForRepairHistory] = useState<string | null>(null);
+
+  // Koch & LINE Odometer Modals State
+  const [isKochModalOpen, setIsKochModalOpen] = useState(false);
+  const [isLineSyncModalOpen, setIsLineSyncModalOpen] = useState(false);
+  const [isMileageHistoryModalOpen, setIsMileageHistoryModalOpen] = useState(false);
+  const [selectedMileageVehicle, setSelectedMileageVehicle] = useState<VehicleRecord | null>(null);
+
+  // Mileage Logs State with Central Storage & Real-Time History
+  const [mileageLogs, setMileageLogs] = useState<MileageLogEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(MILEAGE_LOGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error("Error reading mileage logs:", e);
+    }
+    const { logs } = generateInitialMileageLogs([...FULL_TNB_FLEET_DATA, ...KOCH_FULL_FLEET]);
+    return logs;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MILEAGE_LOGS_STORAGE_KEY, JSON.stringify(mileageLogs));
+    } catch (e) {}
+  }, [mileageLogs]);
+
+  const handleOpenMileageHistoryForVehicle = useCallback((v: VehicleRecord) => {
+    setSelectedMileageVehicle(v);
+    setIsMileageHistoryModalOpen(true);
+  }, []);
+
+  const handleAddManualMileageLog = useCallback((
+    vehicleId: string, 
+    newMileage: number, 
+    reporterName: string, 
+    notes?: string
+  ) => {
+    const target = vehicles.find(v => v.id === vehicleId);
+    const prevMileage = target?.currentMileage || 0;
+    const delta = Math.max(0, newMileage - prevMileage);
+
+    const newLog: MileageLogEntry = {
+      id: `LOG-ML-MANUAL-${Date.now()}`,
+      vehicleId,
+      licensePlate: target?.licensePlate || "",
+      erpNo: target?.erpNo,
+      previousMileage: prevMileage,
+      newMileage,
+      distanceDelta: delta,
+      recordedAt: new Date().toISOString(),
+      source: "manual",
+      reporterName: reporterName || "ศูนย์ควบคุมยานพาหนะ",
+      notes: notes || "บันทึกปรับปรุงเลขไมล์ตรง"
+    };
+
+    setMileageLogs(prev => [newLog, ...prev]);
+
+    setVehicles(prev => prev.map(v => {
+      if (v.id === vehicleId) {
+        return {
+          ...v,
+          currentMileage: newMileage,
+          mileageUpdateCount: (v.mileageUpdateCount || 0) + 1,
+          lastMileageUpdateDate: newLog.recordedAt,
+          lastMileageSource: "manual",
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return v;
+    }));
+  }, [vehicles]);
+
+  const handleApplyMileageUpdate = useCallback((updatedVehicle: VehicleRecord, newLog: MileageLogEntry) => {
+    setVehicles(prev => prev.map(v => v.id === updatedVehicle.id ? updatedVehicle : v));
+    setMileageLogs(prev => [newLog, ...prev.filter(l => l.id !== newLog.id)]);
+  }, []);
+
+  // Filtered views based on currentBrand ("tnb" | "koch" | "all")
+  const isVehicleOfBrand = useCallback((v: VehicleRecord, brand: "tnb" | "koch" | "all") => {
+    if (brand === "all") return true;
+    const isKoch = (v.carrierCompany || "").toUpperCase() === "KOCH" || v.id.startsWith("KC-");
+    return brand === "koch" ? isKoch : !isKoch;
+  }, []);
+
+  const displayedVehicles = useMemo(() => {
+    if (currentBrand === "all") return vehicles;
+    return vehicles.filter(v => isVehicleOfBrand(v, currentBrand));
+  }, [vehicles, currentBrand, isVehicleOfBrand]);
+
+  const displayedTickets = useMemo(() => {
+    if (currentBrand === "all") return tickets;
+    return tickets.filter(t => {
+      const matched = vehicles.find(v => v.licensePlate === t.licensePlate || v.id === t.vehicleId);
+      const isKochVehicle = matched && ((matched.carrierCompany || "").toUpperCase() === "KOCH" || matched.id.startsWith("KC-"));
+      const isKochTicket = t.ticketNumber?.startsWith("KOCH") || t.department?.includes("Koch") || t.requesterName?.includes("Koch") || ["2ฒฬ-3687", "3ฒข-8891", "1ฒศ-4422", "72-5544", "70-9981", "2ฒผ-5511", "71-4455", "3ฒห-9012", "72-8899", "73-1122"].includes(t.licensePlate);
+      const isKoch = isKochVehicle || isKochTicket;
+      return currentBrand === "koch" ? isKoch : !isKoch;
+    });
+  }, [tickets, vehicles, currentBrand]);
+
+  const displayedPmSchedules = useMemo(() => {
+    if (currentBrand === "all") return pmSchedules;
+    return pmSchedules.filter(p => {
+      const isKoch = (p.vehicleId && p.vehicleId.startsWith("KC-")) || p.department?.includes("Koch") || ["2ฒฬ-3687", "3ฒข-8891", "72-5544", "71-4455"].includes(p.licensePlate);
+      return currentBrand === "koch" ? isKoch : !isKoch;
+    });
+  }, [pmSchedules, currentBrand]);
+
+  const displayedDailyInspections = useMemo(() => {
+    if (currentBrand === "all") return dailyInspections;
+    return dailyInspections.filter(d => {
+      const isKoch = d.isoDocNumber?.includes("KOCH") || d.department?.includes("Koch") || (d.vehicleId && d.vehicleId.startsWith("KC-")) || ["2ฒฬ-3687", "3ฒข-8891", "1ฒศ-4422", "72-5544", "70-9981", "2ฒผ-5511", "71-4455", "3ฒห-9012"].includes(d.licensePlate);
+      return currentBrand === "koch" ? isKoch : !isKoch;
+    });
+  }, [dailyInspections, currentBrand]);
+
+  const displayedSafetyHandovers = useMemo(() => {
+    if (currentBrand === "all") return safetyHandovers;
+    return safetyHandovers.filter(s => {
+      const isKoch = s.formRevision?.includes("KOCH") || s.companyName?.includes("KOCH") || s.companyName?.includes("คอช") || (s.vehicleId && s.vehicleId.startsWith("KC-"));
+      return currentBrand === "koch" ? isKoch : !isKoch;
+    });
+  }, [safetyHandovers, currentBrand]);
+
+  const displayedMileageLogs = useMemo(() => {
+    if (currentBrand === "all") return mileageLogs;
+    return mileageLogs.filter(m => {
+      const isKoch = (m.vehicleId && m.vehicleId.startsWith("KC-")) || ["2ฒฬ-3687", "3ฒข-8891", "1ฒศ-4422", "72-5544", "70-9981", "2ฒผ-5511", "71-4455", "3ฒห-9012"].includes(m.licensePlate);
+      return currentBrand === "koch" ? isKoch : !isKoch;
+    });
+  }, [mileageLogs, currentBrand]);
 
   // Initial Central Server Hydration & Background Polling to keep all devices in sync
   useEffect(() => {
@@ -289,6 +533,7 @@ export default function App() {
           if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
           if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
           if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          if (Array.isArray(data.safetyHandovers)) setSafetyHandovers(data.safetyHandovers);
           if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
           setLastSyncedTime(data.lastUpdated || new Date().toISOString());
           setIsCloudConnected(true);
@@ -319,6 +564,7 @@ export default function App() {
             if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
             if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
             if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+            if (Array.isArray(data.safetyHandovers)) setSafetyHandovers(data.safetyHandovers);
             if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
             setLastSyncedTime(data.lastUpdated);
           }
@@ -342,6 +588,7 @@ export default function App() {
           if (Array.isArray(data.requisitions)) setRequisitions(data.requisitions);
           if (Array.isArray(data.pmSchedules)) setPmSchedules(data.pmSchedules);
           if (Array.isArray(data.dailyInspections)) setDailyInspections(data.dailyInspections);
+          if (Array.isArray(data.safetyHandovers)) setSafetyHandovers(data.safetyHandovers);
           if (data.directory && Array.isArray(data.directory.technicians)) setDirectory(data.directory);
           setLastSyncedTime(data.lastUpdated || new Date().toISOString());
           setIsCloudConnected(true);
@@ -378,6 +625,7 @@ export default function App() {
         requisitions,
         pmSchedules,
         dailyInspections,
+        safetyHandovers,
         directory
       });
       setIsSyncing(false);
@@ -390,7 +638,7 @@ export default function App() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections, directory]);
+  }, [vehicles, tickets, inventory, receipts, requisitions, pmSchedules, dailyInspections, safetyHandovers, directory]);
 
   // Sync to local storage for offline resiliency
   useEffect(() => {
@@ -448,6 +696,14 @@ export default function App() {
       console.error("Error saving daily inspections localStorage:", e);
     }
   }, [dailyInspections]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAFETY_HANDOVERS_STORAGE_KEY, JSON.stringify(safetyHandovers));
+    } catch (e) {
+      console.error("Error saving safety handovers localStorage:", e);
+    }
+  }, [safetyHandovers]);
 
   useEffect(() => {
     try {
@@ -588,6 +844,23 @@ export default function App() {
   const handleResetToSampleDailyInspections = () => {
     setDailyInspections(INITIAL_DAILY_INSPECTIONS);
     localStorage.setItem(DAILY_INSPECTIONS_STORAGE_KEY, JSON.stringify(INITIAL_DAILY_INSPECTIONS));
+  };
+
+  // Safety Equipment Handover Handlers (ใบเซ็นรับอุปกรณ์ความปลอดภัย 10 รายการ)
+  const handleSaveSafetyHandover = (record: VehicleSafetyHandoverRecord) => {
+    setSafetyHandovers((prev) => {
+      const idx = prev.findIndex((r) => r.id === record.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = record;
+        return copy;
+      }
+      return [record, ...prev];
+    });
+  };
+
+  const handleDeleteSafetyHandover = (id: string) => {
+    setSafetyHandovers((prev) => prev.filter((r) => r.id !== id));
   };
 
   // PM Schedule Handlers
@@ -1205,8 +1478,8 @@ export default function App() {
   };
 
   // Counts for badge
-  const pendingCount = tickets.filter((t) => t.status === "pending").length;
-  const inProgressCount = tickets.filter(
+  const pendingCount = displayedTickets.filter((t) => t.status === "pending").length;
+  const inProgressCount = displayedTickets.filter(
     (t) => t.status === "in_progress" || t.status === "inspecting" || t.status === "waiting_parts" || t.status === "testing"
   ).length;
 
@@ -1219,14 +1492,18 @@ export default function App() {
         onSelectView={setCurrentView}
         pendingCount={pendingCount}
         inProgressCount={inProgressCount}
-        totalTicketsCount={tickets.length}
-        vehicleCount={vehicles.length}
+        totalTicketsCount={displayedTickets.length}
+        vehicleCount={displayedVehicles.length}
         inventoryCount={inventory.length}
-        pmCount={pmSchedules.length}
-        dailyInspectionCount={dailyInspections.length}
+        pmCount={displayedPmSchedules.length}
+        dailyInspectionCount={displayedDailyInspections.length}
         isCloudConnected={isCloudConnected}
         isSyncing={isSyncing}
         lastSyncedTime={lastSyncedTime}
+        currentBrand={currentBrand}
+        onSelectBrand={setCurrentBrand}
+        onOpenKochModal={() => setIsKochModalOpen(true)}
+        onOpenLineSyncModal={() => setIsLineSyncModalOpen(true)}
         onManualSync={handleManualSync}
         onClearAllData={handleClearAllData}
         onLoadDemoData={handleLoadDemoData}
@@ -1243,13 +1520,47 @@ export default function App() {
         onOpenCollabModal={() => setIsCollabModalOpen(true)}
       />
 
+      {/* Koch Packaging Dedicated Portal Top Banner */}
+      {currentBrand === "koch" && (
+        <div className="bg-gradient-to-r from-rose-950 via-rose-900 to-slate-900 border-b border-rose-800 text-white px-3 sm:px-6 py-2.5 shadow-md">
+          <div className="max-w-[1700px] mx-auto flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
+              <span className="font-extrabold px-2 py-0.5 rounded bg-rose-600 text-white shadow-xs">
+                🔴 เว็บไซต์ KOCH Packaging
+              </span>
+              <span className="text-rose-200 hidden sm:inline">
+                ระบบจัดการขนส่งกล่องบรรจุภัณฑ์ &amp; ซ่อมบำรุง — คัดลอกและสร้างเว็บสำหรับ Koch สำเร็จแล้ว (LINE OA: @kochpackaging)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsKochModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-rose-800/90 hover:bg-rose-700 text-rose-100 border border-rose-600/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>🌐 ข้อมูล &amp; เปิดแยกหน้าต่าง</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentBrand("tnb")}
+                className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/40 text-[11px] font-medium cursor-pointer transition-colors"
+                title="คลิกเพื่อสลับกลับไปยังเว็บหลัก TNB Logistics"
+              >
+                <span>สลับไปเว็บ TNB</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1700px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-8">
         
         {/* Module 1: หน้าคนแจ้ง (Requester Portal) */}
         {currentView === "requester" && (
           <RequesterPortal
-            tickets={tickets}
+            tickets={displayedTickets}
             onSelectTicket={handleSelectTicket}
             onOpenNewModal={() => handleOpenNewTicketModal(false)}
             onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
@@ -1261,7 +1572,7 @@ export default function App() {
         {/* Module 2: หน้าทำงาน & ช่าง (Workshop Operations & Admin Hub) */}
         {currentView === "worker" && (
           <WorkOperationsPortal
-            tickets={tickets}
+            tickets={displayedTickets}
             onSelectTicket={handleSelectTicket}
             onOpenNewModal={() => handleOpenNewTicketModal(false)}
             onOpenBackdatedModal={() => handleOpenNewTicketModal(true)}
@@ -1275,8 +1586,9 @@ export default function App() {
         {/* Module 3: สารระบบทะเบียนรถ (Vehicle Master Registry) */}
         {currentView === "vehicles" && (
           <VehicleRegistryView
-            vehicles={vehicles}
-            tickets={tickets}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
+            mileageLogs={displayedMileageLogs}
             onAddVehicle={handleAddVehicle}
             onUpdateVehicle={handleUpdateVehicle}
             onDeleteVehicle={handleDeleteVehicle}
@@ -1285,6 +1597,8 @@ export default function App() {
               setSelectedPlateForRepairHistory(plate);
               setCurrentView("repair_history");
             }}
+            onOpenMileageHistory={handleOpenMileageHistoryForVehicle}
+            onOpenLineSyncModal={() => setIsLineSyncModalOpen(true)}
             onBulkImportVehicles={handleBulkImportVehicles}
             onRestoreAllVehicles={handleRestoreAllVehicles}
             onDeleteAllVehicles={handleClearAllVehicles}
@@ -1294,9 +1608,9 @@ export default function App() {
         {/* Module 3.2: ตรวจสภาพรถประจำวัน (Daily Vehicle Inspection ISO-SHE-FRM-007) */}
         {currentView === "daily_inspection" && (
           <DailyInspectionView
-            vehicles={vehicles}
-            tickets={tickets}
-            dailyInspections={dailyInspections}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
+            dailyInspections={displayedDailyInspections}
             onAddDailyInspection={handleAddDailyInspection}
             onUpdateDailyInspection={handleUpdateDailyInspection}
             onDeleteDailyInspection={handleDeleteDailyInspection}
@@ -1304,12 +1618,23 @@ export default function App() {
           />
         )}
 
+        {/* Module 3.3: ใบเซ็นรับอุปกรณ์เซฟตี้ประจำรถ (Safety Equipment Sign-off TNB-SHE-FRM-012) */}
+        {currentView === "safety_equipment" && (
+          <VehicleSafetyEquipmentView
+            vehicles={displayedVehicles}
+            safetyHandovers={displayedSafetyHandovers}
+            onSaveHandover={handleSaveSafetyHandover}
+            onDeleteHandover={handleDeleteSafetyHandover}
+            onNavigate={(view) => setCurrentView(view)}
+          />
+        )}
+
         {/* Module 3.5: แผน PM รถ เดือน/ปี (Preventive Maintenance Master Plan) */}
         {currentView === "pm_plan" && (
           <PMPlanView
-            schedules={pmSchedules}
-            vehicles={vehicles}
-            tickets={tickets}
+            schedules={displayedPmSchedules}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
             onAddSchedule={handleAddPMSchedule}
             onUpdateSchedule={handleUpdatePMSchedule}
             onDeleteSchedule={handleDeletePMSchedule}
@@ -1323,10 +1648,10 @@ export default function App() {
         {/* Module 3.6: แผนบำรุงรักษาตามระยะทาง & แจ้งเตือนเลขไมล์ (Maintenance Interval Matrix: DIY vs Center) */}
         {currentView === "maintenance_intervals" && (
           <MaintenanceIntervalMatrixView
-            vehicles={vehicles}
-            tickets={tickets}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
             onRequestRepairForVehicle={(plate) => {
-              const v = vehicles.find((veh) => veh.licensePlate === plate);
+              const v = displayedVehicles.find((veh) => veh.licensePlate === plate) || vehicles.find((veh) => veh.licensePlate === plate);
               if (v) handleRequestRepairForVehicle(v);
             }}
             onOpenVehicleRepairHistory={(plate) => {
@@ -1339,10 +1664,10 @@ export default function App() {
         {/* Module 3.65: ระบบตรวจสอบ & เปลี่ยนยางรายคัน (Tire Management & Tread Depth Tracking) */}
         {currentView === "tire_management" && (
           <TireManagementView
-            vehicles={vehicles}
-            tickets={tickets}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
             onRequestRepairForVehicle={(plate) => {
-              const v = vehicles.find((veh) => veh.licensePlate === plate);
+              const v = displayedVehicles.find((veh) => veh.licensePlate === plate) || vehicles.find((veh) => veh.licensePlate === plate);
               if (v) handleRequestRepairForVehicle(v);
             }}
             onOpenVehicleRepairHistory={(plate) => {
@@ -1355,8 +1680,8 @@ export default function App() {
         {/* Module 3.7: สรุปประวัติการซ่อมและค่าใช้จ่ายรายคัน (Vehicle Repair History & Cost Ledger) */}
         {currentView === "repair_history" && (
           <VehicleRepairHistoryView
-            vehicles={vehicles}
-            tickets={tickets}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
             initialLicensePlate={selectedPlateForRepairHistory || undefined}
             onSelectTicket={handleSelectTicket}
             onOpenNewTicketForVehicle={handleRequestRepairForVehicle}
@@ -1394,8 +1719,8 @@ export default function App() {
           <GoodsRequisitionView
             requisitions={requisitions}
             inventory={inventory}
-            vehicles={vehicles}
-            tickets={tickets}
+            vehicles={displayedVehicles}
+            tickets={displayedTickets}
             onAddRequisition={handleAddRequisition}
             onDeleteRequisition={handleDeleteRequisition}
             onSelectTicket={handleSelectTicket}
@@ -1429,15 +1754,36 @@ export default function App() {
         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2.5">
             <div className="bg-white px-1.5 py-0.5 rounded">
-              <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+              {currentBrand === "koch" ? (
+                <KochLogo variant="red" size="sm" showSubtitle={false} />
+              ) : (
+                <TnbLogo variant="blue" size="sm" showSubtitle={false} />
+              )}
             </div>
-            <span className="font-bold text-white">TNB Logistics Fleet Management System</span>
-            <span className="hidden md:inline">— ระบบแจ้งซ่อมยานพาหนะ คลังอะไหล่ & แผนที่พิกัดรถเสียฉุกเฉิน</span>
+            <span className="font-bold text-white">
+              {currentBrand === "koch" 
+                ? "KOCH Packaging Fleet Management & Maintenance System"
+                : currentBrand === "all"
+                ? "TNB & KOCH Unified Fleet & Workshop Operations Hub"
+                : "TNB Logistics Fleet Management System"}
+            </span>
+            <span className="hidden md:inline">
+              {currentBrand === "koch"
+                ? "— ระบบบริหารงานซ่อม & ขนส่งกล่องบรรจุภัณฑ์ LINE OA: @kochpackaging"
+                : "— ระบบแจ้งซ่อมยานพาหนะ คลังอะไหล่ & แผนที่พิกัดรถเสียฉุกเฉิน"}
+            </span>
           </div>
           <div className="flex items-center space-x-3 text-slate-400">
             <span className="text-emerald-400 font-semibold">● ระบบออนไลน์พร้อมใช้งาน</span>
             <span>•</span>
-            <span>Version 2.4.0 Production</span>
+            <button
+              onClick={() => setIsKochModalOpen(true)}
+              className="text-rose-400 hover:text-rose-300 font-semibold underline cursor-pointer"
+            >
+              เว็บ KOCH Packaging
+            </button>
+            <span>•</span>
+            <span>Version 2.5.0 Multi-Brand</span>
           </div>
         </div>
       </footer>
@@ -1452,7 +1798,7 @@ export default function App() {
             setSelectedVehicleForRepair(null);
           }}
           onSubmitTicket={handleAddNewTicket}
-          vehicles={vehicles}
+          vehicles={displayedVehicles}
           initialVehicle={selectedVehicleForRepair}
           initialIsBackdated={isBackdatedModalMode}
         />
@@ -1462,7 +1808,7 @@ export default function App() {
         <TicketImportModal
           isOpen={isTicketImportModalOpen}
           onClose={() => setIsTicketImportModalOpen(false)}
-          existingVehicles={vehicles}
+          existingVehicles={displayedVehicles}
           onImportTickets={handleBulkImportTickets}
         />
       )}
@@ -1490,7 +1836,7 @@ export default function App() {
         <QuickSearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
-          tickets={tickets}
+          tickets={displayedTickets}
           onSelectTicket={handleSelectTicket}
         />
       )}
@@ -1510,12 +1856,12 @@ export default function App() {
         <DataBackupExportModal
           isOpen={isExportBackupModalOpen}
           onClose={() => setIsExportBackupModalOpen(false)}
-          vehicles={vehicles}
+          vehicles={displayedVehicles}
           inventory={inventory}
-          tickets={tickets}
+          tickets={displayedTickets}
           receipts={receipts}
           requisitions={requisitions}
-          pmSchedules={pmSchedules}
+          pmSchedules={displayedPmSchedules}
         />
       )}
 
@@ -1544,6 +1890,52 @@ export default function App() {
           onlineUsers={onlineUsers}
           recentActivities={recentActivities}
           isConnected={isWsConnected}
+        />
+      )}
+
+      {/* Dedicated Koch Packaging Web & Standalone Launch Modal */}
+      {isKochModalOpen && (
+        <KochStandaloneWebModal
+          isOpen={isKochModalOpen}
+          onClose={() => setIsKochModalOpen(false)}
+          currentBrand={currentBrand}
+          onSelectBrand={setCurrentBrand}
+          onOpenLineSyncModal={() => {
+            setIsKochModalOpen(false);
+            setIsLineSyncModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* LINE Odometer Auto-Sync Modal (Simulator, Batch Import, OCR, Logs) */}
+      {isLineSyncModalOpen && (
+        <LineOdometerSyncModal
+          isOpen={isLineSyncModalOpen}
+          onClose={() => setIsLineSyncModalOpen(false)}
+          vehicles={displayedVehicles}
+          mileageLogs={mileageLogs}
+          currentBrand={currentBrand}
+          onMileageUpdated={() => {}}
+          onApplyMileageUpdate={handleApplyMileageUpdate}
+          onOpenMileageHistoryForVehicle={handleOpenMileageHistoryForVehicle}
+        />
+      )}
+
+      {/* Vehicle Mileage Progression History & Audit Modal */}
+      {isMileageHistoryModalOpen && (
+        <VehicleMileageHistoryModal
+          isOpen={isMileageHistoryModalOpen}
+          onClose={() => {
+            setIsMileageHistoryModalOpen(false);
+            setSelectedMileageVehicle(null);
+          }}
+          vehicle={selectedMileageVehicle}
+          mileageLogs={mileageLogs}
+          onAddManualMileageLog={handleAddManualMileageLog}
+          onOpenLineSyncModal={() => {
+            setIsMileageHistoryModalOpen(false);
+            setIsLineSyncModalOpen(true);
+          }}
         />
       )}
     </div>

@@ -12,7 +12,8 @@ import {
   BellRing,
   ArrowRight,
   Flame,
-  CheckCircle2
+  CheckCircle2,
+  Calendar
 } from "lucide-react";
 import { TireMaintenanceAlert, TireAlertSetting, VehicleRecord } from "../types";
 
@@ -22,6 +23,7 @@ interface TireAlertBannerProps {
   onOpenSettings: () => void;
   onOpenDispatch: () => void;
   onOpenAlertHub: () => void;
+  onOpenWeeklyPlan?: () => void;
   onSelectVehicleId: (vehicleId: string) => void;
   onRequestRepairForVehicle?: (licensePlate: string) => void;
   selectedVehicleId?: string;
@@ -33,6 +35,7 @@ export const TireAlertBanner: React.FC<TireAlertBannerProps> = ({
   onOpenSettings,
   onOpenDispatch,
   onOpenAlertHub,
+  onOpenWeeklyPlan,
   onSelectVehicleId,
   onRequestRepairForVehicle,
   selectedVehicleId
@@ -124,6 +127,16 @@ export const TireAlertBanner: React.FC<TireAlertBannerProps> = ({
         <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto shrink-0">
           <button
             type="button"
+            onClick={onOpenWeeklyPlan || onOpenAlertHub}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-400/40"
+            title="เปิดดูแผนการเปลี่ยนยางรายสัปดาห์ (คันไหน ของสัปดาห์ไหน)"
+          >
+            <Calendar className="w-3.5 h-3.5 text-white" />
+            <span>📅 แผนเปลี่ยนยางรายสัปดาห์</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenAlertHub}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
               hasCritical
@@ -131,7 +144,7 @@ export const TireAlertBanner: React.FC<TireAlertBannerProps> = ({
                 : "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 ring-2 ring-amber-400/40"
             }`}
           >
-            <span>ดูรายการแจ้งเตือนทั้งหมด ({alerts.length})</span>
+            <span>รายการแจ้งเตือน ({alerts.length})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
 

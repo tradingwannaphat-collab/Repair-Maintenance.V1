@@ -138,6 +138,23 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   const [statusLogNote, setStatusLogNote] = useState("");
   const [completionImages, setCompletionImages] = useState<string[]>(ticket.completionImages || []);
   const [issues, setIssues] = useState<RepairIssueItem[]>(ticket.issues || []);
+  const [newIssueTitle, setNewIssueTitle] = useState("");
+  const [showAddIssueRow, setShowAddIssueRow] = useState(false);
+
+  const handleAddNewIssue = () => {
+    if (!newIssueTitle.trim()) return;
+    const newIss: RepairIssueItem = {
+      id: `iss-${Date.now()}`,
+      title: newIssueTitle.trim(),
+      category: ticket.category,
+      description: newIssueTitle.trim(),
+      urgency: "medium",
+      isResolved: false
+    };
+    setIssues(prev => [...prev, newIss]);
+    setNewIssueTitle("");
+    setShowAddIssueRow(false);
+  };
 
   // Post-repair Equipment Assessment States (Requirement: เพิ่มประเภทหลังซ่อมแล้วว่าอุปกรณ์ สามารถซ่อมได้หรือเสีย)
   const [postRepairEquipmentStatus, setPostRepairEquipmentStatus] = useState<'repairable' | 'scrap' | 'repaired_good' | 'mixed' | 'not_applicable'>(
@@ -676,8 +693,50 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                         <CheckSquare className="w-4 h-4 text-blue-600" />
                         รายการปัญหาที่ต้องแก้ไข ({issues.filter(i => i.isResolved).length}/{issues.length} เสร็จแล้ว)
                       </h4>
-                      <span className="text-[11px] text-slate-500">คลิกเพื่อเช็คว่าแก้ไขแล้ว</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 hidden sm:inline">คลิกเพื่อเช็คว่าแก้ไขแล้ว</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddIssueRow(!showAddIssueRow)}
+                          className="text-[11px] text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded font-semibold transition-colors flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>เพิ่มปัญหา</span>
+                        </button>
+                      </div>
                     </div>
+
+                    {showAddIssueRow && (
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="พิมพ์ปัญหาที่พบเพิ่มเติม เช่น ไฟเลี้ยวซ้ายไม่ติด, เสียงดังใต้ท้องรถ..."
+                          value={newIssueTitle}
+                          onChange={(e) => setNewIssueTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddNewIssue();
+                            }
+                          }}
+                          className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddNewIssue}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shrink-0"
+                        >
+                          เพิ่ม
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddIssueRow(false)}
+                          className="px-2 py-1.5 text-slate-500 hover:text-slate-700 text-xs"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    )}
 
                     <div className="space-y-1.5">
                       {issues.map((iss, i) => (
@@ -1066,30 +1125,80 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                 </h4>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    มอบหมายช่างผู้รับผิดชอบ:
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>มอบหมายช่างผู้รับผิดชอบ / อู่ซ่อม:</span>
+                    <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      ✏️ พิมพ์ชื่อช่างหรือชื่ออู่ได้อิสระ
+                    </span>
                   </label>
-                  <select
-                    value={assignedMechanic}
-                    onChange={(e) => setAssignedMechanic(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                  >
-                    <option value="">-- ยังไม่มอบหมายช่าง --</option>
-                    {availableTechnicians && availableTechnicians.length > 0 ? (
-                      availableTechnicians.map((tech) => {
-                        const label = `${tech.name}${tech.nickname ? ` (${tech.nickname})` : ""} - ${tech.roleTitle}`;
-                        return (
-                          <option key={tech.id} value={tech.name}>
-                            {label} ({tech.status === "active" ? "พร้อมงาน" : tech.status === "busy" ? "ติดงาน" : tech.status})
-                          </option>
-                        );
-                      })
-                    ) : (
-                      MECHANIC_LIST.map((m, idx) => (
-                        <option key={idx} value={m}>{m}</option>
-                      ))
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="ticket-detail-mechanic-list"
+                      value={assignedMechanic}
+                      onChange={(e) => setAssignedMechanic(e.target.value)}
+                      placeholder="พิมพ์ชื่อช่าง หรือชื่ออู่ซ่อม เช่น ช่างวิชาญ, ศูนย์ ISUZU, อู่เจริญยนต์..."
+                      className="w-full px-3 py-2 pr-8 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                    />
+                    {assignedMechanic && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignedMechanic("")}
+                        title="ล้างข้อมูลเพื่อพิมพ์ใหม่"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     )}
-                  </select>
+                    <datalist id="ticket-detail-mechanic-list">
+                      {availableTechnicians && availableTechnicians.length > 0 ? (
+                        availableTechnicians.map((tech) => {
+                          const label = `${tech.name}${tech.nickname ? ` (${tech.nickname})` : ""} - ${tech.roleTitle}`;
+                          return (
+                            <option key={tech.id} value={tech.name}>
+                              {label}
+                            </option>
+                          );
+                        })
+                      ) : null}
+                      {MECHANIC_LIST.map((m, idx) => (
+                        <option key={idx} value={m} />
+                      ))}
+                      <option value="ช่างประจำอู่ TNB" />
+                      <option value="ศูนย์บริการตรีเพชร ISUZU" />
+                      <option value="ศูนย์บริการ HINO" />
+                      <option value="ศูนย์บริการ SCANIA" />
+                      <option value="อู่ดวงดี เซอร์วิสเบรกลม & ตั้งศูนย์ถ่วงล้อ" />
+                      <option value="ศูนย์เช็คปั๊ม-หัวฉีดดีเซล บางบอนคอมมอนเรล" />
+                      <option value="อู่มหาชัย คัสซีแอนด์บอดี้" />
+                      <option value="อู่ภายนอกทั่วไป" />
+                    </datalist>
+                  </div>
+                  {/* Quick Preset Buttons */}
+                  <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                    <span className="text-[10px] text-slate-500 font-semibold">แนะนำ:</span>
+                    {[
+                      "ช่างประจำอู่ TNB",
+                      "ช่างวิชาญ",
+                      "ช่างประสิทธิ์",
+                      "ศูนย์ตรีเพชร ISUZU",
+                      "ศูนย์บริการ HINO",
+                      "อู่ภายนอกทั่วไป"
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setAssignedMechanic(preset)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          assignedMechanic === preset
+                            ? "bg-blue-600 text-white border-blue-600 font-bold"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

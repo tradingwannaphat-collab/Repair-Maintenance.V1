@@ -45,7 +45,8 @@ import {
   VehicleRecord,
   RepairStatus,
   RepairItemPart,
-  PostRepairCondition
+  PostRepairCondition,
+  SubCategoryMeta
 } from "../types";
 import { CATEGORIES_CONFIG, VEHICLE_TYPE_LABELS, TNB_DEPARTMENTS, getSubCategoryName, STATUS_CONFIG, POPULAR_VEHICLE_BRANDS, normalizeVehicleBrand } from "../data/categories";
 import { BreakdownLocationPicker } from "./BreakdownLocationPicker";
@@ -62,6 +63,7 @@ interface RepairRequestModalProps {
 }
 
 const MECHANIC_OPTIONS = [
+  "ช่างประจำอู่ TNB",
   "ช่างวิชาญ (ช่างช่วงล่าง & เบรก)",
   "ช่างอนันต์ (ช่างระบบหล่อลื่น & ของเหลว)",
   "ช่างธีระพงษ์ (ช่างระบบไฟฟ้า & กล่อง ECU)",
@@ -69,10 +71,15 @@ const MECHANIC_OPTIONS = [
   "ช่างสมเกียรติ (ช่างระบบปรับอากาศ & แอร์)",
   "ช่างมนตรี (ช่างระบบยาง & ตั้งศูนย์)",
   "ช่างสุรชัย (ช่างตัวถัง & สี 2K)",
-  "ช่างประจำอู่ TNB",
-  "อู่ภายนอก / ศูนย์บริการตรีเพชร ISUZU",
-  "อู่ภายนอก / ศูนย์บริการ HINO",
-  "อู่ภายนอก / ศูนย์บริการ SCANIA"
+  "ศูนย์บริการตรีเพชร ISUZU",
+  "ศูนย์บริการ HINO",
+  "ศูนย์บริการ SCANIA",
+  "ศูนย์บริการ VOLVO TRUCKS",
+  "อู่ดวงดี เซอร์วิสเบรกลม & ตั้งศูนย์ถ่วงล้อ",
+  "ศูนย์เช็คปั๊ม-หัวฉีดดีเซล บางบอนคอมมอนเรล",
+  "อู่มหาชัย คัสซีแอนด์บอดี้ (เคาะพ่นสี-ดัดคัสซี)",
+  "อู่ไดนาโมและไฟฟ้ารถยนต์นครปฐม",
+  "อู่ภายนอกทั่วไป"
 ];
 
 const SAMPLE_PHOTO_PRESETS = [
@@ -151,7 +158,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
     d.setDate(d.getDate() - 1);
     return d.toISOString().split("T")[0];
   });
-  const [assignedMechanic, setAssignedMechanic] = useState<string>("ช่างวิชาญ (ช่างช่วงล่าง & เบรก)");
+  const [assignedMechanic, setAssignedMechanic] = useState<string>("");
   const [historicalLaborCost, setHistoricalLaborCost] = useState<string>("500");
   const [historicalPartsCostManual, setHistoricalPartsCostManual] = useState<string>("0");
   const [historicalRating, setHistoricalRating] = useState<number>(5);
@@ -226,15 +233,15 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
     address: ""
   });
 
-  // Multiple issues per ticket state
+  // Multiple issues per ticket state - prefilled with first clean sub-category
   const [issuesList, setIssuesList] = useState<RepairIssueItem[]>([
     {
       id: "issue-1",
-      title: "",
+      title: "ระบบเบรก & จานเบรก & ผ้าเบรก",
       category: "suspension",
       subCategoryId: "sus-brakes",
       subCategoryName: "ระบบเบรก & จานเบรก & ผ้าเบรก",
-      description: "",
+      description: "ตรวจเช็คระบบเบรก จานเบรก และผ้าเบรก",
       urgency: "medium",
       isResolved: false
     }
@@ -248,7 +255,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Change category and default first sub-category
+  // Change category tab without erasing previously selected issues from other categories
   const handleCategoryChange = (newCat: RepairCategory) => {
     setCategory(newCat);
     const firstSub = CATEGORIES_CONFIG[newCat]?.subCategories?.[0];
@@ -259,11 +266,133 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
     }
   };
 
-  // Add issue item
+  // Check if a sub-category has an issue in issuesList
+  const isSubCategorySelected = (subId: string, catKey?: RepairCategory) => {
+    const targetCat = catKey || category;
+    return issuesList.some(
+      iss => (iss.category || category) === targetCat && iss.subCategoryId === subId && (iss.title.trim().length > 0 || iss.description.trim().length > 0)
+    );
+  };
+
+  // Check if a common symptom is selected in issuesList
+  const isSymptomSelected = (symptomText: string, catKey?: RepairCategory) => {
+    const targetCat = catKey || category;
+    return issuesList.some(
+      iss => (iss.category || category) === targetCat && (iss.title === symptomText || (iss.description && iss.description.includes(symptomText)))
+    );
+  };
+
+  // Toggle sub-category selection (Multi-Select)
+  const toggleSubCategory = (sub: SubCategoryMeta, catKey: RepairCategory) => {
+    setCategory(catKey);
+    setSubCategoryId(sub.id);
+
+    const exists = issuesList.some(
+      iss => (iss.category || category) === catKey && iss.subCategoryId === sub.id && (iss.title.trim().length > 0 || iss.description.trim().length > 0)
+    );
+
+    if (exists) {
+      // Uncheck / Remove this issue
+      setIssuesList(prev => prev.filter(
+        iss => !((iss.category || category) === catKey && iss.subCategoryId === sub.id)
+      ));
+    } else {
+      // Check / Add this sub-category as an issue
+      const newIssue: RepairIssueItem = {
+        id: `issue-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        title: sub.nameTh,
+        category: catKey,
+        subCategoryId: sub.id,
+        subCategoryName: sub.nameTh,
+        description: sub.description ? `ตรวจเช็ค/ซ่อมบำรุง: ${sub.description}` : `ตรวจเช็ค ${sub.nameTh}`,
+        urgency: "medium",
+        isResolved: false
+      };
+
+      setIssuesList(prev => {
+        // Filter out any purely blank issues
+        const valid = prev.filter(iss => iss.title.trim().length > 0 || iss.description.trim().length > 0);
+        return [...valid, newIssue];
+      });
+    }
+  };
+
+  // Toggle common symptom selection (Multi-Select)
+  const toggleSymptom = (symptomText: string, catKey: RepairCategory, targetSubId?: string) => {
+    setCategory(catKey);
+    const subId = targetSubId || subCategoryId || CATEGORIES_CONFIG[catKey]?.subCategories?.[0]?.id || "";
+    const subName = getSubCategoryName(catKey, subId);
+
+    const exists = issuesList.some(
+      iss => (iss.category || category) === catKey && (iss.title === symptomText || (iss.description && iss.description.includes(symptomText)))
+    );
+
+    if (exists) {
+      setIssuesList(prev => prev.filter(
+        iss => !((iss.category || category) === catKey && (iss.title === symptomText || (iss.description && iss.description.includes(symptomText))))
+      ));
+    } else {
+      const newIssue: RepairIssueItem = {
+        id: `issue-symp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        title: symptomText,
+        category: catKey,
+        subCategoryId: subId,
+        subCategoryName: subName,
+        description: `ตรวจพบอาการ: ${symptomText}`,
+        urgency: "medium",
+        isResolved: false
+      };
+
+      setIssuesList(prev => {
+        const valid = prev.filter(iss => iss.title.trim().length > 0 || iss.description.trim().length > 0);
+        return [...valid, newIssue];
+      });
+    }
+  };
+
+  // Select all sub-categories in current active category
+  const handleSelectAllInCurrentCategory = () => {
+    const subCats = CATEGORIES_CONFIG[category]?.subCategories || [];
+    setIssuesList(prev => {
+      const existing = [...prev].filter(iss => iss.title.trim() || iss.description.trim());
+      subCats.forEach(sub => {
+        const alreadyExists = existing.some(
+          iss => (iss.category || category) === category && iss.subCategoryId === sub.id
+        );
+        if (!alreadyExists) {
+          existing.push({
+            id: `issue-${Date.now()}-${sub.id}-${Math.random().toString(36).substring(2, 6)}`,
+            title: sub.nameTh,
+            category: category,
+            subCategoryId: sub.id,
+            subCategoryName: sub.nameTh,
+            description: sub.description ? `ตรวจเช็ค/ซ่อมบำรุง: ${sub.description}` : `ตรวจเช็ค ${sub.nameTh}`,
+            urgency: "medium",
+            isResolved: false
+          });
+        }
+      });
+      return existing;
+    });
+  };
+
+  // Clear all issues in current active category
+  const handleClearAllInCurrentCategory = () => {
+    setIssuesList(prev => prev.filter(iss => (iss.category || category) !== category));
+  };
+
+  // Count issues per category
+  const getIssuesCountForCategory = (catKey: RepairCategory) => {
+    return issuesList.filter(
+      iss => (iss.category || category) === catKey && (iss.title.trim() || iss.description.trim())
+    ).length;
+  };
+
+  // Add issue item manually
   const handleAddIssue = () => {
     const defaultSub = CATEGORIES_CONFIG[category]?.subCategories?.[0];
     const newIssue: RepairIssueItem = {
-      id: `issue-${Date.now()}`,
+      id: `issue-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       title: "",
       category: category,
       subCategoryId: defaultSub ? defaultSub.id : undefined,
@@ -277,7 +406,6 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
 
   // Remove issue item
   const handleRemoveIssue = (index: number) => {
-    if (issuesList.length <= 1) return;
     setIssuesList(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -539,7 +667,7 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
       })) : undefined,
       attachedImages: attachedImages,
       status: finalStatus,
-      assignedMechanic: isBackdatedMode ? assignedMechanic : undefined,
+      assignedMechanic: assignedMechanic.trim() || undefined,
       actualCompletionDate: actualCompDate,
       partsList: finalPartsList,
       partsCost: finalPartsCost,
@@ -562,8 +690,8 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
           timestamp: timestamp,
           status: finalStatus,
           note: isBackdatedMode
-            ? `📜 บันทึกข้อมูลใบแจ้งซ่อมย้อนหลัง (Historical Record) วันที่ ${new Date(timestamp).toLocaleDateString("th-TH")}${finalStatus === "completed" ? " - สถานะ: ซ่อมเสร็จสมบูรณ์" : ""}`
-            : `สร้างใบแจ้งซ่อม TNB Logistics หมวดหมู่: ${CATEGORIES_CONFIG[category].nameTh} ${subCatName ? `(${subCatName})` : ""}${breakdownLocation.isEmergencyBreakdown ? " [🚨 แจ้งพิกัดรถเสียฉุกเฉินนอกสถานที่]" : ""}`,
+            ? `📜 บันทึกข้อมูลใบแจ้งซ่อมย้อนหลัง (Historical Record) วันที่ ${new Date(timestamp).toLocaleDateString("th-TH")}${finalStatus === "completed" ? " - สถานะ: ซ่อมเสร็จสมบูรณ์" : ""}${assignedMechanic.trim() ? ` [ช่าง/อู่: ${assignedMechanic.trim()}]` : ""}`
+            : `สร้างใบแจ้งซ่อม TNB Logistics หมวดหมู่: ${CATEGORIES_CONFIG[category].nameTh} ${subCatName ? `(${subCatName})` : ""}${assignedMechanic.trim() ? ` [มอบหมาย: ${assignedMechanic.trim()}]` : ""}${breakdownLocation.isEmergencyBreakdown ? " [🚨 แจ้งพิกัดรถเสียฉุกเฉินนอกสถานที่]" : ""}`,
           updatedBy: requesterName.trim()
         }
       ]
@@ -742,19 +870,65 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
               {/* Mechanic & Cost Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2 border-t border-amber-200">
                 <div>
-                  <label className="block text-xs font-bold text-amber-950 mb-1 flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5 text-amber-700" />
-                    ช่างผู้รับผิดชอบ / อู่ซ่อม
+                  <label className="block text-xs font-bold text-amber-950 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-amber-700" />
+                      ช่างผู้รับผิดชอบ / อู่ซ่อม
+                    </span>
+                    <span className="text-[10px] text-amber-800/80 font-normal">
+                      (พิมพ์เองหรือเลือกได้)
+                    </span>
                   </label>
-                  <select
-                    value={assignedMechanic}
-                    onChange={(e) => setAssignedMechanic(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-amber-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden font-medium text-slate-900 shadow-xs"
-                  >
-                    {MECHANIC_OPTIONS.map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="mechanic-options-list"
+                      value={assignedMechanic}
+                      onChange={(e) => setAssignedMechanic(e.target.value)}
+                      placeholder="พิมพ์ชื่อช่าง หรือชื่ออู่ซ่อม..."
+                      className="w-full px-3 py-2 pr-8 text-xs bg-white border border-amber-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden font-medium text-slate-900 shadow-xs"
+                    />
+                    {assignedMechanic && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignedMechanic("")}
+                        title="ล้างข้อความเพื่อพิมพ์ใหม่"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-full"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <datalist id="mechanic-options-list">
+                      {MECHANIC_OPTIONS.map((m) => (
+                        <option key={m} value={m} />
+                      ))}
+                    </datalist>
+                  </div>
+                  {/* Quick Preset Buttons */}
+                  <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                    <span className="text-[10px] text-amber-900 font-semibold">แนะนำ:</span>
+                    {[
+                      "ช่างประจำอู่ TNB",
+                      "ช่างวิชาญ",
+                      "ศูนย์ตรีเพชร ISUZU",
+                      "ศูนย์บริการ HINO",
+                      "อู่ดวงดี",
+                      "อู่ภายนอกทั่วไป"
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setAssignedMechanic(preset)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          assignedMechanic === preset
+                            ? "bg-amber-500 text-slate-950 border-amber-600 font-bold"
+                            : "bg-white/80 hover:bg-amber-100 text-amber-900 border-amber-300"
+                        }`}
+                      >
+                        {preset}
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 <div>
@@ -1041,6 +1215,71 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
                     <option key={dept} value={dept}>{dept}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* ช่างผู้รับผิดชอบ หรือ อู่ซ่อม (พิมพ์ระบุได้อิสระ หรือเลือกจากรายชื่อช่าง/อู่) */}
+            <div className="pt-3 mt-3 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-blue-600" />
+                  <span>ช่างผู้รับผิดชอบ หรือ อู่ซ่อม (Assigned Mechanic / Workshop)</span>
+                </label>
+                <span className="text-[11px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  ✏️ พิมพ์ชื่อช่างหรือชื่ออู่ได้อิสระ หรือคลิกเลือกจากรายการ
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  list="mechanic-options-list"
+                  value={assignedMechanic}
+                  onChange={(e) => setAssignedMechanic(e.target.value)}
+                  placeholder="พิมพ์ชื่อช่าง หรือชื่ออู่ซ่อม เช่น ช่างวิชาญ, ช่างสมเกียรติ, ศูนย์ตรีเพชร ISUZU, อู่ดวงดี..."
+                  className="w-full px-3 py-2 pr-8 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                />
+                {assignedMechanic && (
+                  <button
+                    type="button"
+                    onClick={() => setAssignedMechanic("")}
+                    title="ล้างข้อความเพื่อพิมพ์ใหม่"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-full"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <datalist id="mechanic-options-list">
+                  {MECHANIC_OPTIONS.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                <span className="text-[10px] text-slate-500 font-semibold">แนะนำคลิกเลือกด่วน:</span>
+                {[
+                  "ช่างประจำอู่ TNB",
+                  "ช่างวิชาญ",
+                  "ช่างประสิทธิ์",
+                  "ศูนย์ตรีเพชร ISUZU",
+                  "ศูนย์บริการ HINO",
+                  "อู่ดวงดี",
+                  "อู่ภายนอกทั่วไป"
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAssignedMechanic(preset)}
+                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                      assignedMechanic === preset
+                        ? "bg-blue-600 text-white border-blue-600 font-bold"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -1332,14 +1571,26 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
           </div>
 
           {/* Section 2: หมวดหมู่งานซ่อมหลัก & ประเภทย่อย (Category & Sub-Category) */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">3</span>
-                ประเภทหลัก & ประเภทย่อยของงานซ่อม
-                <span className="text-rose-500">*</span>
-              </label>
-              <span className="text-xs text-slate-500">เลือกประเภทหลักแล้วระบุประเภทย่อย</span>
+                <label className="text-sm font-bold text-slate-900">
+                  ประเภทหลัก & ประเภทย่อยของงานซ่อม
+                </label>
+                <span className="text-rose-500 font-bold">*</span>
+                {issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length > 0 && (
+                  <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    เลือกปัญหาแล้ว {issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length} ข้อ
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md font-semibold border border-blue-200 flex items-center gap-1">
+                  💡 คลิกเลือกปัญหาได้หลายข้อพร้อมกัน
+                </span>
+              </div>
             </div>
 
             {/* Primary Category Grid */}
@@ -1347,13 +1598,14 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
               {(Object.keys(CATEGORIES_CONFIG) as RepairCategory[]).map((catKey) => {
                 const cat = CATEGORIES_CONFIG[catKey];
                 const isSelected = category === catKey;
+                const countInCat = getIssuesCountForCategory(catKey);
                 return (
                   <button
                     type="button"
                     key={catKey}
                     id={`cat-select-${catKey}`}
                     onClick={() => handleCategoryChange(catKey)}
-                    className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between ${
+                    className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between relative ${
                       isSelected
                         ? "border-blue-600 bg-blue-50/70 shadow-xs ring-2 ring-blue-500/20"
                         : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white"
@@ -1361,7 +1613,14 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-bold text-slate-900">{cat.nameTh}</span>
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+                      <div className="flex items-center gap-1">
+                        {countInCat > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs" title={`เลือกแล้ว ${countInCat} ข้อในหมวดนี้`}>
+                            {countInCat} ข้อ
+                          </span>
+                        )}
+                        {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+                      </div>
                     </div>
                     <p className="text-[11px] text-slate-500 line-clamp-1">{cat.description}</p>
                   </button>
@@ -1369,175 +1628,311 @@ export const RepairRequestModal: React.FC<RepairRequestModalProps> = ({
               })}
             </div>
 
-            {/* Sub-Category Selection */}
-            {activeCategoryObj?.subCategories && activeCategoryObj.subCategories.length > 0 && (
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-blue-600" />
-                    ประเภทย่อยของ [{activeCategoryObj.nameTh}]:
-                  </span>
-                  <span className="text-[11px] text-slate-500">เลือกรายการที่ตรงจุดที่สุด</span>
+            {/* Consolidated Multi-Selected Problems Summary Banner */}
+            {issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length > 0 && (
+              <div className="p-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/80 to-slate-50 rounded-xl border border-blue-200 space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-slate-800">
+                      รายการปัญหาที่เลือกแล้วทั้งหมด ({issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length} รายการ จาก {new Set(issuesList.filter(iss => iss.title.trim() || iss.description.trim()).map(i => i.category || category)).size} หมวดหมู่):
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIssuesList([])}
+                    className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold transition-colors px-2 py-0.5 rounded hover:bg-rose-50"
+                  >
+                    ล้างทั้งหมด
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {activeCategoryObj.subCategories.map((sub) => {
-                    const isSubSelected = subCategoryId === sub.id;
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {issuesList.filter(iss => iss.title.trim() || iss.description.trim()).map((iss, i) => {
+                    const catCfg = CATEGORIES_CONFIG[iss.category || category];
                     return (
-                      <button
-                        type="button"
-                        key={sub.id}
-                        onClick={() => setSubCategoryId(sub.id)}
-                        className={`p-2.5 rounded-lg border text-left text-xs transition-all ${
-                          isSubSelected
-                            ? "border-blue-500 bg-blue-100/60 text-blue-900 font-semibold ring-1 ring-blue-500"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100/80"
-                        }`}
+                      <span
+                        key={iss.id || i}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-blue-200 text-slate-900 shadow-2xs hover:border-blue-300 transition-colors"
                       >
-                        <div className="flex items-center justify-between">
-                          <span>{sub.nameTh}</span>
-                          {isSubSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 ml-1 shrink-0" />}
-                        </div>
-                        {sub.description && (
-                          <p className="text-[10px] text-slate-500 font-normal mt-0.5 line-clamp-1">{sub.description}</p>
-                        )}
-                      </button>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-bold">
+                          {catCfg ? catCfg.nameTh.split(" ")[0] : "หมวด"}
+                        </span>
+                        <span>{iss.title}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveIssue(i)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-0.5"
+                          title="ลบปัญหานี้"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
                     );
                   })}
                 </div>
               </div>
             )}
+
+            {/* Sub-Category Selection with Multi-Select Checkboxes */}
+            {activeCategoryObj?.subCategories && activeCategoryObj.subCategories.length > 0 && (
+              <div className="p-3.5 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/70">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">
+                      ประเภทย่อย & ปัญหาในหมวด [{activeCategoryObj.nameTh}]:
+                    </span>
+                    <span className="text-[11px] text-slate-500 hidden sm:inline">
+                      (กดคลิกเลือกได้หลายข้อ)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllInCurrentCategory}
+                      className="text-[11px] text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 px-2 py-1 rounded-md font-semibold transition-colors flex items-center gap-1 shadow-2xs"
+                      title="เลือกทุกประเภทย่อยในหมวดนี้"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                      เลือกทั้งหมดในหมวดนี้
+                    </button>
+                    {getIssuesCountForCategory(category) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllInCurrentCategory}
+                        className="text-[11px] text-slate-600 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200 px-2 py-1 rounded-md transition-colors shadow-2xs"
+                        title="ล้างรายการที่เลือกในหมวดนี้"
+                      >
+                        ล้าง ({getIssuesCountForCategory(category)})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sub-Category Multi-Select Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {activeCategoryObj.subCategories.map((sub) => {
+                    const isSubSelected = isSubCategorySelected(sub.id, category);
+                    return (
+                      <button
+                        type="button"
+                        key={sub.id}
+                        onClick={() => toggleSubCategory(sub, category)}
+                        className={`p-2.5 sm:p-3 rounded-xl border text-left text-xs transition-all flex items-start justify-between gap-2 ${
+                          isSubSelected
+                            ? "border-blue-600 bg-blue-100/70 text-blue-950 font-semibold ring-1 ring-blue-500 shadow-2xs"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100/70"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-all ${
+                              isSubSelected ? "bg-blue-600 border-blue-600 text-white" : "border-slate-300 bg-white text-transparent"
+                            }`}>
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </span>
+                            <span className="text-xs font-bold leading-tight">{sub.nameTh}</span>
+                          </div>
+                          {sub.description && (
+                            <p className="text-[10px] text-slate-500 font-normal mt-1 pl-6 line-clamp-1">
+                              {sub.description}
+                            </p>
+                          )}
+                        </div>
+                        {isSubSelected && (
+                          <span className="text-[10px] font-bold text-blue-700 bg-white border border-blue-200 px-1.5 py-0.5 rounded shadow-2xs shrink-0">
+                            เลือกแล้ว
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Common Symptoms / Specific Issues Quick-Toggle Chips in Section 3 */}
+                {activeCategoryObj.commonSymptoms && activeCategoryObj.commonSymptoms.length > 0 && (
+                  <div className="pt-2.5 border-t border-slate-200/70 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        หรือคลิกเลือกอาการเสียพบบ่อย เพื่อเพิ่มเป็นข้อปัญหาทันที:
+                      </span>
+                      <span className="text-[10px] text-slate-500">คลิกเพื่อเปิด/ปิด</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeCategoryObj.commonSymptoms.map((symp, sIdx) => {
+                        const isSympChecked = isSymptomSelected(symp, category);
+                        return (
+                          <button
+                            type="button"
+                            key={sIdx}
+                            onClick={() => toggleSymptom(symp, category)}
+                            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 text-left ${
+                              isSympChecked
+                                ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-bold ring-1 ring-emerald-400 shadow-2xs"
+                                : "bg-white hover:bg-blue-50/80 hover:border-blue-300 text-slate-700 border-slate-200 shadow-2xs"
+                            }`}
+                          >
+                            {isSympChecked ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            )}
+                            <span>{symp}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Section 3: รายการปัญหาที่แจ้ง (Multiple Issues per Ticket) */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
+          {/* Section 4: รายการปัญหาที่แจ้ง (Multiple Issues per Ticket) */}
+          <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <label className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">4</span>
-                  รายการปัญหาที่ต้องการแจ้งซ่อม (แจ้งได้หลายปัญหาพร้อมกัน)
+                  รายการปัญหาที่ต้องการแจ้งซ่อม ({issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length} รายการ)
                 </label>
-                <p className="text-xs text-slate-500">เพิ่มรายการปัญหาแยกแต่ละจุดเพื่อความชัดเจนในการจัดช่างและอะไหล่</p>
+                <p className="text-xs text-slate-500">ตรวจสอบ แก้ไขรายละเอียด หรือกำหนดระดับความเร่งด่วนของแต่ละปัญหา</p>
               </div>
 
               <button
                 type="button"
                 onClick={handleAddIssue}
                 id="btn-add-multiple-issue"
-                className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-semibold transition-colors"
+                className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-semibold transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                เพิ่มปัญหาอีกข้อ
+                เพิ่มปัญหาอีกข้อ (พิมพ์เอง)
               </button>
             </div>
 
             {/* List of Issue Items */}
-            <div className="space-y-3">
-              {issuesList.map((issueItem, idx) => (
-                <div 
-                  key={issueItem.id} 
-                  className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 relative group"
+            {issuesList.length === 0 ? (
+              <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
+                <CheckSquare className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-60" />
+                <p className="text-xs font-semibold text-slate-700">ยังไม่ได้เลือกรายการปัญหา</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  คลิกเลือกประเภทย่อยหรืออาการเสียที่พบบ่อยในข้อ 3 ด้านบน หรือคลิกปุ่ม "+ เพิ่มปัญหาอีกข้อ (พิมพ์เอง)"
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddIssue}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-md bg-slate-200 text-slate-700 flex items-center justify-center text-[11px] font-bold">
-                        {idx + 1}
-                      </span>
-                      ปัญหาข้อที่ {idx + 1}
-                    </span>
+                  <Plus className="w-3.5 h-3.5" />
+                  เพิ่มปัญหาข้อแรก
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {issuesList.map((issueItem, idx) => {
+                  const issueCat = issueItem.category || category;
+                  const catConfig = CATEGORIES_CONFIG[issueCat];
+                  return (
+                    <div 
+                      key={issueItem.id} 
+                      className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 relative group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs font-bold text-slate-800">
+                            ปัญหาข้อที่ {idx + 1}
+                          </span>
+                          {catConfig && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-md font-bold bg-blue-100/80 text-blue-800 border border-blue-200">
+                              หมวด: {catConfig.nameTh}
+                            </span>
+                          )}
+                        </div>
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={issueItem.urgency || "medium"}
-                        onChange={(e) => handleUpdateIssue(idx, "urgency", e.target.value)}
-                        className="text-[11px] bg-white border border-slate-300 rounded px-2 py-0.5 font-medium"
-                      >
-                        <option value="critical">ฉุกเฉิน</option>
-                        <option value="high">เร่งด่วน</option>
-                        <option value="medium">ปานกลาง</option>
-                        <option value="low">ทั่วไป</option>
-                      </select>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={issueItem.urgency || "medium"}
+                            onChange={(e) => handleUpdateIssue(idx, "urgency", e.target.value)}
+                            className="text-[11px] bg-white border border-slate-300 rounded px-2 py-1 font-medium"
+                          >
+                            <option value="critical">ฉุกเฉิน</option>
+                            <option value="high">เร่งด่วน</option>
+                            <option value="medium">ปานกลาง</option>
+                            <option value="low">ทั่วไป</option>
+                          </select>
 
-                      {issuesList.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveIssue(idx)}
-                          className="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition-colors"
-                          title="ลบปัญหานี้"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveIssue(idx)}
+                            className="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition-colors"
+                            title="ลบปัญหานี้"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div className="sm:col-span-2">
-                      <input
-                        type="text"
-                        placeholder="หัวข้อปัญหา เช่น เบรกหน้ามีเสียงดังเอี๊ยด, แอร์หลังไม่เย็น"
-                        value={issueItem.title}
-                        onChange={(e) => handleUpdateIssue(idx, "title", e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none font-medium"
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="sm:col-span-2">
+                          <input
+                            type="text"
+                            placeholder="หัวข้อปัญหา เช่น เบรกหน้ามีเสียงดังเอี๊ยด, แอร์หลังไม่เย็น"
+                            value={issueItem.title}
+                            onChange={(e) => handleUpdateIssue(idx, "title", e.target.value)}
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <select
+                            value={issueItem.subCategoryId || (catConfig?.subCategories?.[0]?.id || "")}
+                            onChange={(e) => handleUpdateIssue(idx, "subCategoryId", e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            {catConfig?.subCategories.map((s) => (
+                              <option key={s.id} value={s.id}>{s.nameTh}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <textarea
+                        rows={2}
+                        placeholder="อธิบายอาการอย่างละเอียดเพิ่มเติม เช่น ดังเฉพาะตอนเหยียบเบรกที่ความเร็ว 60+, เกิดขึ้นมาแล้ว 3 วัน..."
+                        value={issueItem.description}
+                        onChange={(e) => handleUpdateIssue(idx, "description", e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
+                  );
+                })}
+              </div>
+            )}
 
-                    <div>
-                      <select
-                        value={issueItem.subCategoryId || subCategoryId}
-                        onChange={(e) => handleUpdateIssue(idx, "subCategoryId", e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                      >
-                        {activeCategoryObj?.subCategories.map((s) => (
-                          <option key={s.id} value={s.id}>{s.nameTh}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={2}
-                    placeholder="อธิบายอาการอย่างละเอียดเพิ่มเติม เช่น ดังเฉพาะตอนเหยียบเบรกที่ความเร็ว 60+, เกิดขึ้นมาแล้ว 3 วัน..."
-                    value={issueItem.description}
-                    onChange={(e) => handleUpdateIssue(idx, "description", e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                  />
+            {/* Quick Symptom helper banner if issues exist */}
+            {activeCategoryObj?.commonSymptoms && (
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>
+                    รวมปัญหาที่เลือกทั้งหมด: <strong>{issuesList.filter(iss => iss.title.trim() || iss.description.trim()).length} รายการ</strong> (สามารถส่งแจ้งซ่อมรวมในใบเดียวได้)
+                  </span>
                 </div>
-              ))}
-            </div>
-
-            {/* Quick Symptom Chips helper */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-              <div className="text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-blue-600" />
-                คลิกเลือกอาการพบบ่อยในหมวดนี้เพื่อเพิ่มเป็นปัญหาใหม่ทันที:
+                <button
+                  type="button"
+                  onClick={handleAddIssue}
+                  className="font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  เพิ่มปัญหาอื่น
+                </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {activeCategoryObj?.commonSymptoms.map((symp, idx) => (
-                  <button
-                    type="button"
-                    key={idx}
-                    onClick={() => {
-                      setIssuesList(prev => [
-                        ...prev,
-                        {
-                          id: `issue-${Date.now()}-${idx}`,
-                          title: symp,
-                          category: category,
-                          subCategoryId: subCategoryId,
-                          subCategoryName: getSubCategoryName(category, subCategoryId),
-                          description: `ตรวจพบอาการ: ${symp}`,
-                          urgency: "medium",
-                          isResolved: false
-                        }
-                      ]);
-                    }}
-                    className="text-[11px] bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors text-left"
-                  >
-                    + {symp}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Section 4: ระดับความเร่งด่วนโดยรวม & รายละเอียดเพิ่มเติม */}

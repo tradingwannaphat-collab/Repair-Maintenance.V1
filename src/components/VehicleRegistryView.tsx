@@ -41,9 +41,11 @@ import {
   ArrowUp01,
   ArrowDownAZ,
   ArrowUpAZ,
-  SlidersHorizontal
+  SlidersHorizontal,
+  History,
+  MessageSquare
 } from "lucide-react";
-import { VehicleRecord, VehicleType, VehicleStatus, RepairTicket } from "../types";
+import { VehicleRecord, VehicleType, VehicleStatus, RepairTicket, MileageLogEntry } from "../types";
 import { VEHICLE_TYPE_LABELS, TNB_DEPARTMENTS } from "../data/categories";
 import { VehicleImportModal } from "./VehicleImportModal";
 import { exportVehiclesToExcel, exportVehiclesToCSV, downloadVehicleTemplate, normalizeLicensePlate } from "../utils/excelImportExport";
@@ -56,6 +58,9 @@ export type VehicleSortField =
   | "carrier_asc"   // ผู้ประกอบการ (TNB, BBNP...)
   | "brand_asc"     // ยี่ห้อรถ (A-Z)
   | "tax_asc"       // วันหมดอายุภาษี (ใกล้หมดก่อน)
+  | "updates_desc"  // อัปเดตไมล์บ่อยสุด (จำนวนครั้งมากสุด)
+  | "mileage_desc"  // เลขไมล์มากสุด -> น้อยสุด
+  | "mileage_asc"   // เลขไมล์น้อยสุด -> มากสุด
   | "created_desc"  // ล่าสุด
   | "created_asc";  // เก่าสุด
 
@@ -78,12 +83,15 @@ export const compareErpNo = (aStr?: string, bStr?: string, direction: "asc" | "d
 interface VehicleRegistryViewProps {
   vehicles: VehicleRecord[];
   tickets: RepairTicket[];
+  mileageLogs?: MileageLogEntry[];
   onAddVehicle: (vehicle: any) => void;
   onUpdateVehicle: (vehicle: VehicleRecord) => void;
   onDeleteVehicle: (vehicleId: string) => void;
   onRequestRepairForVehicle?: (vehicle: VehicleRecord) => void;
   onQuickRepair?: (vehicle: VehicleRecord) => void;
   onOpenVehicleRepairHistory?: (plate: string) => void;
+  onOpenMileageHistory?: (vehicle: VehicleRecord) => void;
+  onOpenLineSyncModal?: () => void;
   onSelectTicket?: (ticket: RepairTicket) => void;
   onBulkImportVehicles?: (importedVehicles: VehicleRecord[], mode: "upsert" | "append" | "replace") => void;
   onDeleteAllVehicles?: () => void;
@@ -93,17 +101,27 @@ interface VehicleRegistryViewProps {
 export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
   vehicles,
   tickets,
+  mileageLogs = [],
   onAddVehicle,
   onUpdateVehicle,
   onDeleteVehicle,
   onRequestRepairForVehicle,
   onQuickRepair,
   onOpenVehicleRepairHistory,
+  onOpenMileageHistory,
+  onOpenLineSyncModal,
   onSelectTicket,
   onBulkImportVehicles,
   onDeleteAllVehicles,
   onRestoreAllVehicles
 }) => {
+  const getVehicleMileageCount = (v: VehicleRecord) => {
+    if (v.mileageUpdateCount !== undefined && v.mileageUpdateCount > 0) {
+      return v.mileageUpdateCount;
+    }
+    if (!mileageLogs || mileageLogs.length === 0) return 0;
+    return mileageLogs.filter(l => l.vehicleId === v.id || l.licensePlate === v.licensePlate).length;
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -289,6 +307,17 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
       }
       if (sortBy === "tax_asc") {
         return (a.taxExpiryDate || "9999-99-99").localeCompare(b.taxExpiryDate || "9999-99-99");
+      }
+      if (sortBy === "updates_desc") {
+        const countA = getVehicleMileageCount(a);
+        const countB = getVehicleMileageCount(b);
+        return countB - countA;
+      }
+      if (sortBy === "mileage_desc") {
+        return (b.currentMileage || 0) - (a.currentMileage || 0);
+      }
+      if (sortBy === "mileage_asc") {
+        return (a.currentMileage || 0) - (b.currentMileage || 0);
       }
       if (sortBy === "created_asc") {
         return (a.createdAt || "").localeCompare(b.createdAt || "");
@@ -520,6 +549,26 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-2.5 flex-wrap">
+            {/* LINE Odometer Auto-Sync Button */}
+            {onOpenLineSyncModal && (
+              <button
+                id="btn-line-odometer-sync"
+                onClick={onOpenLineSyncModal}
+                className="px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 via-[#06C755] to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center space-x-2 border border-emerald-400 cursor-pointer"
+                title="ดึงข้อมูลเลขไมล์จาก LINE อัตโนมัติ (Webhook / แชทกลุ่ม / สแกนภาพถ่ายเรือนไมล์)"
+              >
+                <div className="relative">
+                  <Gauge className="w-4 h-4 text-white" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-300"></span>
+                </div>
+                <span>📲 บันทึกไมล์จาก LINE</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-white text-[10px] font-mono font-bold">
+                  Auto
+                </span>
+              </button>
+            )}
+
             {/* Import Button */}
             <button
               id="btn-import-vehicles"
@@ -761,6 +810,9 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
               >
                 <option value="erp_asc">🔢 No. ERP: จากน้อย → มาก (1, 2, 10...)</option>
                 <option value="erp_desc">🔢 No. ERP: จากมาก → น้อย (...10, 2, 1)</option>
+                <option value="updates_desc">📈 อัปเดตไมล์: บ่อยสุด (จำนวนครั้งมากสุด)</option>
+                <option value="mileage_desc">⚡ เลขไมล์: มากที่สุด → น้อยสุด</option>
+                <option value="mileage_asc">⚡ เลขไมล์: น้อยที่สุด → มากสุด</option>
                 <option value="plate_asc">🚗 ทะเบียนรถ: ก → ฮ (A → Z)</option>
                 <option value="plate_desc">🚗 ทะเบียนรถ: ฮ → ก (Z → A)</option>
                 <option value="carrier_asc">🏢 ประกอบการ: A → Z (TNB, BBNP...)</option>
@@ -1027,26 +1079,63 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                     <span className="font-medium text-slate-800">{vehicle.driverName || "ยังไม่ระบุ พขร."}</span>
                   </div>
                   <div className="font-mono text-slate-700 text-[11px] shrink-0">
-                    {vehicle.currentMileage.toLocaleString()} กม.
+                    {vehicle.carrierCompany || "TNB"}
                   </div>
+                </div>
+
+                {/* Mileage & Updates Tracking (LINE / Sensor / Auto Sync) */}
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-1.5">
+                    <Gauge className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="font-mono font-bold text-slate-900 text-xs">
+                      {vehicle.currentMileage.toLocaleString()} กม.
+                    </span>
+                  </div>
+                  {onOpenMileageHistory && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenMileageHistory(vehicle);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 shadow-2xs group cursor-pointer"
+                      title="คลิกเพื่อเรียกดูประวัติและจำนวนครั้งที่อัปเดตเลขไมล์ของคันนี้"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 group-hover:scale-125 transition-transform animate-pulse" />
+                      <span>อัปเดตไมล์ {getVehicleMileageCount(vehicle)} ครั้ง</span>
+                      <ChevronRight className="w-3 h-3 text-emerald-600 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="p-3 bg-slate-50/80 border-t border-slate-100 rounded-b-xl flex items-center justify-between gap-2">
+              <div className="p-3 bg-slate-50/80 border-t border-slate-100 rounded-b-xl flex items-center justify-between gap-1.5 flex-wrap sm:flex-nowrap">
                 <button
                   type="button"
                   onClick={() => handleQuickRepairAction(vehicle)}
-                  className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-1"
+                  className="flex-1 min-w-[75px] px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-1"
                 >
                   <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                  <span>⚡ แจ้งซ่อม</span>
+                  <span>แจ้งซ่อม</span>
                 </button>
+
+                {onOpenMileageHistory && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenMileageHistory(vehicle)}
+                    className="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1 cursor-pointer"
+                    title={`เรียกดูประวัติการอัปเดตเลขไมล์ (อัปเดตแล้ว ${getVehicleMileageCount(vehicle)} ครั้ง)`}
+                  >
+                    <Gauge className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>ไมล์ ({getVehicleMileageCount(vehicle)})</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
                   onClick={() => setViewingVehicle(vehicle)}
-                  className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                  className="px-2 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition-colors"
                   title="ดูรายละเอียด 27 รายการ"
                 >
                   27 รายการ
@@ -1056,7 +1145,7 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenVehicleRepairHistory(vehicle.licensePlate)}
-                    className="px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1"
+                    className="px-2 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1"
                     title="ดูประวัติการซ่อมบำรุงและค่าใช้จ่ายรายคัน"
                   >
                     <Clock className="w-3.5 h-3.5" />
@@ -1239,8 +1328,21 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                       <div>Eng: {vehicle.engineNumber || "-"}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800">{vehicle.driverName || "-"}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{vehicle.currentMileage.toLocaleString()} กม.</div>
+                      <div className="font-medium text-slate-800">{vehicle.driverName || "ยังไม่ระบุ พขร."}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs font-mono font-bold text-slate-900">{vehicle.currentMileage.toLocaleString()} กม.</span>
+                        {onOpenMileageHistory && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenMileageHistory(vehicle)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200 transition-colors shadow-2xs cursor-pointer"
+                            title={`คลิกเพื่อเรียกดูประวัติและจำนวนครั้งที่อัปเดตเลขไมล์ (อัปเดตแล้ว ${getVehicleMileageCount(vehicle)} ครั้ง)`}
+                          >
+                            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>{getVehicleMileageCount(vehicle)} ครั้ง</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-[11px]">
                       <div className="text-pink-700 font-semibold">{vehicle.actInsuranceCompany || "พรบ."}</div>
@@ -1261,6 +1363,15 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
                           <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
                           <span>แจ้งซ่อม</span>
                         </button>
+                        {onOpenMileageHistory && (
+                          <button
+                            onClick={() => onOpenMileageHistory(vehicle)}
+                            className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-md transition-colors border border-emerald-200"
+                            title={`เรียกดูประวัติเลขไมล์ (${getVehicleMileageCount(vehicle)} ครั้ง)`}
+                          >
+                            <Gauge className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setViewingVehicle(vehicle)}
                           className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors"
@@ -2338,6 +2449,61 @@ export const VehicleRegistryView: React.FC<VehicleRegistryViewProps> = ({
 
             {/* Content: 4 Color-Coded Detail Cards */}
             <div className="p-6 space-y-4">
+              {/* Odometer & Mileage Tracking Banner - ตอบโจทย์ "สามารถเรียกดูได้ว่าคันนี้มีอัพเดทเลขไมค์ได้กี่ครั้ง" */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+                    <Gauge className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-emerald-950 font-bold">เลขไมล์ปัจจุบัน:</span>
+                      <span className="text-base font-black text-slate-900 font-mono">
+                        {viewingVehicle.currentMileage.toLocaleString()} กม.
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        อัปเดตไปแล้ว {getVehicleMileageCount(viewingVehicle)} ครั้ง
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      {viewingVehicle.lastMileageSource ? `ช่องทางล่าสุด: ${viewingVehicle.lastMileageSource === "line_webhook" ? "LINE Webhook อัตโนมัติ" : viewingVehicle.lastMileageSource === "line_chat_import" ? "นำเข้าจากแชท LINE" : viewingVehicle.lastMileageSource}` : "ระบบรองรับการดึงข้อมูลจาก LINE อัตโนมัติ"}
+                      {viewingVehicle.lastMileageUpdateDate && ` • ${new Date(viewingVehicle.lastMileageUpdateDate).toLocaleDateString("th-TH")}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {onOpenMileageHistory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingVehicle;
+                        setViewingVehicle(null);
+                        onOpenMileageHistory(target);
+                      }}
+                      className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <History className="w-4 h-4" />
+                      <span>เรียกดูประวัติเลขไมล์ ({getVehicleMileageCount(viewingVehicle)} ครั้ง)</span>
+                    </button>
+                  )}
+                  {onOpenLineSyncModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewingVehicle(null);
+                        onOpenLineSyncModal();
+                      }}
+                      className="px-3 py-2 rounded-lg bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                      title="เปิดระบบดึงเลขไมล์จาก LINE"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>ซิงค์ LINE</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* 1. Yellow Group */}
               <div className="p-4 rounded-xl bg-yellow-50/70 border border-yellow-200 space-y-3">
                 <div className="flex items-center justify-between border-b border-yellow-200/80 pb-2">

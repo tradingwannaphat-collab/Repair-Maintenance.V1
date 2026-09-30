@@ -161,12 +161,13 @@ export interface RepairTicket {
   priority: Priority;
   symptoms: string;
   issues?: RepairIssueItem[]; // Support for multiple issues in a single ticket
-  attachedImages: string[];
+  attachedImages?: string[];
   completionImages?: string[];
   status: RepairStatus;
   assignedMechanic?: string;
   estimatedCompletionDate?: string;
   actualCompletionDate?: string;
+  completedAt?: string;
   partsList: RepairItemPart[];
   partsCost: number;
   laborCost: number;
@@ -216,7 +217,7 @@ export interface ExecutiveReportData {
 }
 
 export type VehicleStatus = 'active' | 'under_repair' | 'maintenance_due' | 'maintenance' | 'inactive';
-export type FuelType = 'diesel' | 'gasoline' | 'cng_ngv' | 'ev' | 'hybrid';
+export type FuelType = 'diesel' | 'gasoline' | 'cng_ngv' | 'ev' | 'hybrid' | string;
 
 export interface VehicleRecord {
   id: string;
@@ -262,8 +263,40 @@ export interface VehicleRecord {
   insuranceExpiryDate?: string;
   lastServiceDate?: string;
   notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  // Mileage Tracking & LINE Integration
+  mileageUpdateCount?: number; // จำนวนครั้งที่มีการอัปเดตเลขไมล์
+  lastMileageUpdateDate?: string; // วันที่อัปเดตเลขไมล์ล่าสุด
+  lastMileageSource?: string; // ช่องทางที่อัปเดตไมล์ล่าสุด
+  initialMileage?: number; // เลขไมล์เริ่มต้นตอนลงทะเบียน
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MileageLogSource = 
+  | 'line_webhook'        // ดึงจาก LINE Messaging API Webhook อัตโนมัติ
+  | 'line_chat_import'   // นำเข้าจากข้อความแชทกลุ่ม LINE
+  | 'line_ocr'           // สแกนภาพถ่ายเรือนไมล์จาก LINE ด้วย AI OCR
+  | 'daily_inspection'   // จากการตรวจเช็คสภาพรถประจำวัน
+  | 'repair_ticket'      // จากการเปิดใบแจ้งซ่อม
+  | 'manual_update'      // เจ้าหน้าที่ปรับปรุงด้วยตนเอง
+  | 'manual';
+
+export interface MileageLogEntry {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  erpNo?: string;
+  previousMileage: number;
+  newMileage: number;
+  distanceDelta: number; // ระยะทางที่เพิ่มขึ้น (+กม.)
+  recordedAt: string; // ISO string
+  source: MileageLogSource;
+  reporterName: string; // ชื่อคนขับ หรือผู้แจ้ง เช่น "นายสมเกียรติ (คนขับ)", "LINE Webhook Bot"
+  reporterLineId?: string;
+  rawMessage?: string; // ข้อความเดิมจาก LINE เช่น "1ฒข-4589 ไมล์ 84500"
+  imageUrl?: string;
+  notes?: string;
+  isFlagged?: boolean; // เตือนกรณีไมล์ลดลง หรือเพิ่มผิดปกติ
 }
 
 export interface InventoryItem {
@@ -359,6 +392,7 @@ export type PMPlanType =
 
 export type PMPlanStatus = 
   | 'planned'     // ตามแผนงาน (Scheduled)
+  | 'scheduled'   // รอเข้าตรวจตามนัดหมาย
   | 'in_progress' // กำลังดำเนินการซ่อมบำรุง
   | 'completed'   // ดำเนินการเสร็จสมบูรณ์แล้ว
   | 'overdue'     // เกินกำหนดเวลาแผนงาน
@@ -374,36 +408,44 @@ export interface PMChecklistItem {
 
 export interface PMMonthlyScheduleItem {
   id: string;
-  pmPlanCode: string; // e.g. "PM-2026-03-001"
-  isoDocNumber: string; // e.g. "TNB-MT-PLN-001-Rev.02"
+  pmPlanCode?: string; // e.g. "PM-2026-03-001"
+  isoDocNumber?: string; // e.g. "TNB-MT-PLN-001-Rev.02"
   vehicleId: string;
   licensePlate: string;
   erpNo?: string;
   province?: string;
-  vehicleBrand: string;
-  vehicleModel: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
   vehicleType: VehicleType;
   carrierCompany?: string;
   department?: string;
   driverName?: string;
-  year: number; // e.g. 2026
-  month: number; // 1 to 12
+  year?: number; // e.g. 2026
+  month?: number; // 1 to 12
+  planMonth?: string | number; // Alias for month
+  planYear?: number;
   plannedDate: string; // YYYY-MM-DD
   actualDate?: string; // YYYY-MM-DD
-  pmType: PMPlanType;
+  pmType?: PMPlanType;
   pmTypeName?: string;
-  targetMileage: number;
+  serviceLevel?: string;
+  plannedMileage?: number;
+  actualMileage?: number;
+  targetMileage?: number;
   lastServiceMileage?: number;
   status: PMPlanStatus;
-  estimatedCost: number;
+  estimatedCost?: number;
+  costEstimate?: number;
   actualCost?: number;
   assignedTechnician?: string;
+  mechanicName?: string;
+  serviceCenterName?: string;
   ticketId?: string; // Connected Repair Ticket ID if created
   ticketNumber?: string; // e.g. "REP-2026-0801"
-  checklists: PMChecklistItem[];
+  checklists?: PMChecklistItem[];
   notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PMAnnualMasterPlan {
@@ -503,7 +545,7 @@ export interface DailyVehicleInspectionRecord {
   inspectorPhone?: string;
   currentMileage: number;
   startMileage?: number;
-  overallStatus: 'pass' | 'fail' | 'skip'; // pass: all ok, fail: has defect, skip: holiday/parked
+  overallStatus: 'pass' | 'fail' | 'skip' | 'warning'; // pass: all ok, fail: has defect, skip: holiday/parked, warning: minor issue
   defectCount: number;
   results: DailyInspectionCheckResult[];
   tireReport?: TireInspectionReport; // Specialized Tire Tread Depth & Wear Inspection
@@ -703,6 +745,50 @@ export interface VehicleTireProfile {
   avgTreadDepthMm: number;
 }
 
+export type WeeklyPlanStatus = 'pending' | 'scheduled' | 'in_progress' | 'completed';
+
+export interface WeeklyTirePlanVehicle {
+  vehicleId: string;
+  licensePlate: string;
+  vehicleType: VehicleType;
+  department: string;
+  driverName?: string;
+  driverPhone?: string;
+  currentMileage: number;
+  brand?: string;
+  model?: string;
+  weekNumber: 1 | 2 | 3 | 4; // 1 = W1, 2 = W2, 3 = W3, 4 = W4
+  weekLabel: string; // e.g. "สัปดาห์ที่ 1 (1 - 7 ก.ย.)"
+  targetDate?: string; // YYYY-MM-DD
+  tiresToReplace: Array<{
+    alertId: string;
+    positionKey: string;
+    positionNameTh: string;
+    treadDepthMm: number;
+    thresholdMm: number;
+    differenceMm: number;
+    alertLevel: 'critical' | 'warning';
+    wearCondition: string;
+    tireBrand?: string;
+    pressurePsi?: number;
+  }>;
+  totalTires: number;
+  hasCritical: boolean;
+  minTreadDepthMm: number;
+  estimatedCost: number;
+  status: WeeklyPlanStatus;
+  assignedShopOrTechnician?: string;
+  notes?: string;
+}
+
+export interface WeeklyPlanOverride {
+  weekNumber?: 1 | 2 | 3 | 4;
+  targetDate?: string;
+  status?: WeeklyPlanStatus;
+  assignedShopOrTechnician?: string;
+  notes?: string;
+}
+
 export interface EngineOilRecord {
   id: string;
   vehicleId: string;
@@ -783,6 +869,7 @@ export type AppNavView =
   | 'worker' 
   | 'vehicles' 
   | 'daily_inspection' 
+  | 'safety_equipment'
   | 'pm_plan' 
   | 'maintenance_intervals'
   | 'tire_management'
@@ -793,6 +880,96 @@ export type AppNavView =
   | 'requisition' 
   | 'directory'
   | 'workflow';
+
+// ==========================================
+// Vehicle Safety Equipment & Handover Form Types (ISO-SHE-FRM-012)
+// ==========================================
+
+export interface VehicleSafetyItemTemplate {
+  id: string;
+  itemCode: string; // e.g. "SEC-01"
+  nameTh: string;
+  nameEn: string;
+  standardQty: number;
+  unit: string; // e.g. "อัน", "ถัง", "เส้น", "กระบอก", "ชุด", "ผืน", "ตัว", "ใบ", "คู่"
+  purpose: string;
+  vehicleTypes: {
+    sixTenWheel: boolean; // หก/สิบล้อ
+    tractor: boolean;     // หัวลาก
+    pickup: boolean;      // กะบะ
+  };
+  estimatedValueBaht: number; // มูลค่าชดใช้กรณีสูญหาย
+  specNote?: string;
+  imageUrl?: string; // Custom uploaded image (Data URL / Image link)
+  isCustomItem?: boolean; // Flag indicating if item was user-added
+  category?: string; // Optional equipment category (e.g. PPE, Emergency, Chemical, Cargo Securing)
+}
+
+export type SafetyItemCheckStatus = 'received' | 'not_applicable' | 'pending' | 'missing' | 'damaged';
+
+export interface HandoverItemDetail {
+  templateId: string;
+  itemCode: string;
+  nameTh: string;
+  quantity: number;
+  unit: string;
+  status: SafetyItemCheckStatus;
+  serialOrAssetTag?: string;
+  serialNumber?: string;
+  conditionNote?: string;
+  notes?: string;
+  estimatedValueBaht: number;
+}
+
+export interface SignedDocumentUpload {
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  dataUrl: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  notes?: string;
+}
+
+export interface VehicleSafetyHandoverRecord {
+  id: string;
+  documentNumber?: string; // e.g. "SFT-2026-001"
+  docNumber?: string; // Alias
+  formRevision?: string;
+  companyName?: string;
+  vehicleId: string;
+  licensePlate: string;
+  erpNo?: string;
+  vehicleType: VehicleType;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  department: string;
+  driverName: string;
+  driverEmployeeId?: string;
+  driverPhone?: string;
+  handoverDate: string; // YYYY-MM-DD
+  currentMileage?: number;
+  issuedBy?: string;
+  issuedByRole?: string;
+  issuerName?: string;
+  issuerRole?: string;
+  totalItemsChecked?: number;
+  allPassed?: boolean;
+  totalEstimatedValue?: number;
+  handoverReason?: 'new_vehicle' | 'new_driver' | 'annual_renewal' | 'replace_lost' | 'audit' | string;
+  status: 'active' | 'returned' | 'incomplete_audit' | 'replacement_required';
+  items: HandoverItemDetail[];
+  liabilityAgreementAccepted?: boolean;
+  liabilityClauseText?: string;
+  driverSignatureDataUrl?: string;
+  driverSignature?: string;
+  officerSignatureDataUrl?: string;
+  managerSignatureDataUrl?: string;
+  signedDocumentUpload?: SignedDocumentUpload;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 // ==========================================
 // Service Directory: Mechanics, Vendors & Repair Centers
@@ -825,7 +1002,9 @@ export interface VendorShopItem {
   id: string;
   name: string; // ชื่อร้านค้า / บริษัท เช่น "บจก. เจริญยนต์อะไหล่บรรทุก พระราม 2"
   shortName?: string; // ชื่อเรียกสั้นๆ เช่น "เจริญยนต์"
-  category: string; // หมวดหมู่อะไหล่หลัก เช่น "อะไหล่ช่วงล่างและเบรกลม"
+  shopType?: string;
+  productsSupplied?: string[];
+  category?: string; // หมวดหมู่อะไหล่หลัก เช่น "อะไหล่ช่วงล่างและเบรกลม"
   suppliedCategories?: RepairCategory[]; // หมวดหมู่งานซ่อมที่จำหน่าย
   contactPerson?: string; // ผู้ติดต่อ / เซลล์
   phone: string;
@@ -919,6 +1098,7 @@ export interface LiveActivityEvent {
     | 'VENDOR_EDITED'
     | 'CENTER_EDITED'
     | 'TIRE_UPDATED'
+    | 'VEHICLE_UPDATED'
     | 'USER_JOINED';
   title: string;
   description: string;

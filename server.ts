@@ -16,8 +16,14 @@ import {
 import { INITIAL_TICKETS } from "./src/data/mockData";
 import { INITIAL_DAILY_INSPECTIONS } from "./src/data/dailyInspectionData";
 import { INITIAL_PM_SCHEDULES_2026 } from "./src/data/pmPlanData";
+import { INITIAL_SAFETY_HANDOVERS } from "./src/data/vehicleSafetyEquipmentData";
 import { INITIAL_SERVICE_DIRECTORY } from "./src/data/initialDirectoryData";
-import { ServiceDirectoryState, LiveActivityEvent } from "./src/types";
+import { 
+  generateInitialMileageLogs, 
+  parseLineOdometerMessage, 
+  parseBatchLineMessages 
+} from "./src/data/initialMileageLogData";
+import { ServiceDirectoryState, LiveActivityEvent, MileageLogEntry } from "./src/types";
 
 dotenv.config();
 
@@ -51,21 +57,27 @@ interface FleetServerDB {
   requisitions: any[];
   pmSchedules: any[];
   dailyInspections: any[];
+  safetyHandovers: any[];
   directory: ServiceDirectoryState;
+  mileageLogs: MileageLogEntry[];
 }
 
 function getDefaultFleetDB(): FleetServerDB {
+  const seedFleet = getFleet108Vehicles();
+  const { logs, updatedVehicles } = generateInitialMileageLogs(seedFleet);
   return {
     version: 108,
     lastUpdated: new Date().toISOString(),
-    vehicles: getFleet108Vehicles(),
+    vehicles: updatedVehicles,
     tickets: INITIAL_TICKETS,
     inventory: INITIAL_INVENTORY_ITEMS,
     receipts: INITIAL_GOODS_RECEIPTS,
     requisitions: INITIAL_GOODS_REQUISITIONS,
     pmSchedules: INITIAL_PM_SCHEDULES_2026,
     dailyInspections: INITIAL_DAILY_INSPECTIONS,
+    safetyHandovers: INITIAL_SAFETY_HANDOVERS,
     directory: INITIAL_SERVICE_DIRECTORY,
+    mileageLogs: logs,
   };
 }
 
@@ -174,21 +186,30 @@ function initServerDB() {
       if (raw && raw.trim().length > 0) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.vehicles) && parsed.vehicles.length > 0) {
+          let loadedLogs = Array.isArray(parsed.mileageLogs) ? parsed.mileageLogs : [];
+          let loadedVehicles = parsed.vehicles;
+          if (loadedLogs.length === 0) {
+            const seed = generateInitialMileageLogs(loadedVehicles);
+            loadedLogs = seed.logs;
+            loadedVehicles = seed.updatedVehicles;
+          }
           inMemoryDB = {
             version: parsed.version || 108,
             lastUpdated: parsed.lastUpdated || new Date().toISOString(),
-            vehicles: parsed.vehicles,
+            vehicles: loadedVehicles,
             tickets: (Array.isArray(parsed.tickets) && parsed.tickets.length > 0) ? parsed.tickets : INITIAL_TICKETS,
             inventory: Array.isArray(parsed.inventory) ? parsed.inventory : INITIAL_INVENTORY_ITEMS,
             receipts: Array.isArray(parsed.receipts) ? parsed.receipts : INITIAL_GOODS_RECEIPTS,
             requisitions: Array.isArray(parsed.requisitions) ? parsed.requisitions : INITIAL_GOODS_REQUISITIONS,
             pmSchedules: Array.isArray(parsed.pmSchedules) ? parsed.pmSchedules : INITIAL_PM_SCHEDULES_2026,
             dailyInspections: Array.isArray(parsed.dailyInspections) ? parsed.dailyInspections : INITIAL_DAILY_INSPECTIONS,
+            safetyHandovers: Array.isArray(parsed.safetyHandovers) ? parsed.safetyHandovers : INITIAL_SAFETY_HANDOVERS,
             directory: (parsed.directory && Array.isArray(parsed.directory.technicians) && parsed.directory.technicians.length > 0)
               ? parsed.directory
               : INITIAL_SERVICE_DIRECTORY,
+            mileageLogs: loadedLogs,
           };
-          console.log(`[Fleet Server DB] Loaded ${inMemoryDB.vehicles.length} vehicles, ${inMemoryDB.tickets.length} tickets, ${inMemoryDB.directory.technicians.length} technicians from disk`);
+          console.log(`[Fleet Server DB] Loaded ${inMemoryDB.vehicles.length} vehicles, ${inMemoryDB.mileageLogs.length} mileage logs, ${inMemoryDB.tickets.length} tickets from disk`);
           return;
         }
       }
@@ -253,6 +274,7 @@ async function startServer() {
         requisitions, 
         pmSchedules, 
         dailyInspections,
+        safetyHandovers,
         directory,
         updatedBy,
         actionDescription
@@ -287,6 +309,14 @@ async function startServer() {
       }
       if (Array.isArray(dailyInspections)) {
         inMemoryDB.dailyInspections = dailyInspections;
+        changed = true;
+      }
+      if (Array.isArray(safetyHandovers)) {
+        inMemoryDB.safetyHandovers = safetyHandovers;
+        changed = true;
+      }
+      if (Array.isArray(req.body.mileageLogs)) {
+        inMemoryDB.mileageLogs = req.body.mileageLogs;
         changed = true;
       }
       if (directory && (Array.isArray(directory.technicians) || Array.isArray(directory.vendors) || Array.isArray(directory.serviceCenters))) {
@@ -407,6 +437,366 @@ async function startServer() {
       success: true,
       users: getActiveUsersPayload(),
       recentActivities
+    });
+  });
+
+  // ==========================================
+  // LINE ODOMETER AUTO-SYNC & WEBHOOK APIs
+  // ==========================================
+
+  // 1. Live LINE Messaging API Webhook Receiver
+  app.post("/api/line/webhook", (req, res) => {
+    try {
+      const body = req.body || {};
+      const events = body.events || [];
+      const updatedLogs: MileageLogEntry[] = [];
+      const now = new Date().toISOString();
+      let dbChanged = false;
+
+      for (const event of events) {
+        if (event.type === "message" && event.message?.type === "text") {
+          const rawText = event.message.text || "";
+          const senderId = event.source?.userId || "line_user";
+          const parsed = parseLineOdometerMessage(rawText, inMemoryDB.vehicles);
+
+          if (parsed.isValid && parsed.matchedVehicle && parsed.extractedMileage !== null) {
+            const v = parsed.matchedVehicle;
+            const newMileage = parsed.extractedMileage;
+            const prevMileage = v.currentMileage;
+            const delta = newMileage - prevMileage;
+            const newCount = (v.mileageUpdateCount || 0) + 1;
+
+            const updatedVehicle = {
+              ...v,
+              currentMileage: newMileage,
+              mileageUpdateCount: newCount,
+              lastMileageUpdateDate: now,
+              lastMileageSource: "line_webhook",
+              updatedAt: now
+            };
+
+            inMemoryDB.vehicles = inMemoryDB.vehicles.map(veh => veh.id === v.id ? updatedVehicle : veh);
+
+            const newLog: MileageLogEntry = {
+              id: `LOG-LINE-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              vehicleId: v.id,
+              licensePlate: v.licensePlate,
+              erpNo: v.erpNo,
+              previousMileage: prevMileage,
+              newMileage: newMileage,
+              distanceDelta: delta,
+              recordedAt: now,
+              source: "line_webhook",
+              reporterName: parsed.extractedDriverName || v.driverName || "พนักงานขับรถ LINE",
+              reporterLineId: senderId,
+              rawMessage: rawText,
+              notes: parsed.warningNote || `ดึงข้อมูลอัตโนมัติจาก LINE Webhook (อัปเดตครั้งที่ ${newCount})`,
+              isFlagged: Boolean(parsed.warningNote)
+            };
+
+            inMemoryDB.mileageLogs = [newLog, ...(inMemoryDB.mileageLogs || [])];
+            updatedLogs.push(newLog);
+            dbChanged = true;
+
+            addActivity({
+              timestamp: now,
+              userName: updatedVehicle.driverName || "LINE Webhook",
+              userRole: "พนักงานขับรถประจำสาย TNB",
+              userColor: "#06C755", // LINE Official Brand Green
+              actionType: "VEHICLE_UPDATED",
+              title: `📲 อัปเดตเลขไมล์จาก LINE: ${v.licensePlate}`,
+              description: `เลขไมล์ใหม่ ${newMileage.toLocaleString()} กม. (+${delta.toLocaleString()} กม.) [อัปเดตครั้งที่ ${newCount}]`
+            });
+          }
+        }
+      }
+
+      if (dbChanged) {
+        inMemoryDB.version += 1;
+        inMemoryDB.lastUpdated = now;
+        saveServerDB(inMemoryDB);
+
+        // Broadcast to all connected clients
+        broadcastToAll({
+          type: "full_state_sync",
+          version: inMemoryDB.version,
+          lastUpdated: inMemoryDB.lastUpdated,
+          data: inMemoryDB
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        eventsCount: events.length,
+        updatedCount: updatedLogs.length,
+        updatedLogs
+      });
+    } catch (err: any) {
+      console.error("[LINE Webhook Error]:", err);
+      res.status(200).json({ success: false, error: err?.message || "Webhook error" });
+    }
+  });
+
+  // 2. LINE Message Simulator & Quick Single Message Tester
+  app.post("/api/line/simulate", (req, res) => {
+    try {
+      const { message, apply = true, updatedBy } = req.body;
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ success: false, error: "กรุณาระบุข้อความจำลองจาก LINE" });
+      }
+
+      const parsed = parseLineOdometerMessage(message, inMemoryDB.vehicles);
+      const now = new Date().toISOString();
+
+      if (apply && parsed.isValid && parsed.matchedVehicle && parsed.extractedMileage !== null) {
+        const v = parsed.matchedVehicle;
+        const newMileage = parsed.extractedMileage;
+        const prevMileage = v.currentMileage;
+        const delta = newMileage - prevMileage;
+        const newCount = (v.mileageUpdateCount || 0) + 1;
+
+        const updatedVehicle = {
+          ...v,
+          currentMileage: newMileage,
+          mileageUpdateCount: newCount,
+          lastMileageUpdateDate: now,
+          lastMileageSource: "line_chat_import",
+          updatedAt: now
+        };
+
+        inMemoryDB.vehicles = inMemoryDB.vehicles.map(veh => veh.id === v.id ? updatedVehicle : veh);
+
+        const newLog: MileageLogEntry = {
+          id: `LOG-LINE-SIM-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          vehicleId: v.id,
+          licensePlate: v.licensePlate,
+          erpNo: v.erpNo,
+          previousMileage: prevMileage,
+          newMileage: newMileage,
+          distanceDelta: delta,
+          recordedAt: now,
+          source: "line_chat_import",
+          reporterName: parsed.extractedDriverName || v.driverName || updatedBy?.name || "พนักงานขับรถ TNB",
+          rawMessage: message,
+          notes: parsed.warningNote || `ดึงเลขไมล์จากข้อความ LINE (อัปเดตครั้งที่ ${newCount})`,
+          isFlagged: Boolean(parsed.warningNote)
+        };
+
+        inMemoryDB.mileageLogs = [newLog, ...(inMemoryDB.mileageLogs || [])];
+        inMemoryDB.version += 1;
+        inMemoryDB.lastUpdated = now;
+        saveServerDB(inMemoryDB);
+
+        const act = addActivity({
+          timestamp: now,
+          userName: updatedVehicle.driverName || updatedBy?.name || "LINE Simulator",
+          userRole: "พนักงานขนส่ง",
+          userColor: "#06C755",
+          actionType: "VEHICLE_UPDATED",
+          title: `📲 บันทึกเลขไมล์จาก LINE: ${v.licensePlate}`,
+          description: `เลขไมล์ใหม่ ${newMileage.toLocaleString()} กม. (+${delta.toLocaleString()} กม.) [อัปเดตครั้งที่ ${newCount}]`
+        });
+
+        broadcastToAll({
+          type: "full_state_sync",
+          version: inMemoryDB.version,
+          lastUpdated: inMemoryDB.lastUpdated,
+          data: inMemoryDB,
+          activity: act
+        });
+
+        return res.json({
+          success: true,
+          applied: true,
+          result: parsed,
+          log: newLog,
+          vehicle: updatedVehicle
+        });
+      }
+
+      res.json({
+        success: true,
+        applied: false,
+        result: parsed
+      });
+    } catch (err: any) {
+      console.error("[LINE Simulate Error]:", err);
+      res.status(500).json({ success: false, error: err?.message || "Simulation error" });
+    }
+  });
+
+  // 3. LINE Group Chat Batch Message Importer
+  app.post("/api/line/batch-import", (req, res) => {
+    try {
+      const { batchText, apply = true, updatedBy } = req.body;
+      if (!batchText || typeof batchText !== "string") {
+        return res.status(400).json({ success: false, error: "กรุณาระบุข้อความที่คัดลอกจากกลุ่มแชท LINE" });
+      }
+
+      const parsedResults = parseBatchLineMessages(batchText, inMemoryDB.vehicles);
+      const now = new Date().toISOString();
+      const updatedLogs: MileageLogEntry[] = [];
+      let appliedCount = 0;
+
+      if (apply) {
+        for (const r of parsedResults) {
+          if (r.isValid && r.matchedVehicle && r.extractedMileage !== null) {
+            const v = r.matchedVehicle;
+            const newMileage = r.extractedMileage;
+            const prevMileage = v.currentMileage;
+            const delta = newMileage - prevMileage;
+            const newCount = (v.mileageUpdateCount || 0) + 1;
+
+            const updatedVehicle = {
+              ...v,
+              currentMileage: newMileage,
+              mileageUpdateCount: newCount,
+              lastMileageUpdateDate: now,
+              lastMileageSource: "line_chat_import",
+              updatedAt: now
+            };
+
+            inMemoryDB.vehicles = inMemoryDB.vehicles.map(veh => veh.id === v.id ? updatedVehicle : veh);
+
+            const newLog: MileageLogEntry = {
+              id: `LOG-LINE-BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              vehicleId: v.id,
+              licensePlate: v.licensePlate,
+              erpNo: v.erpNo,
+              previousMileage: prevMileage,
+              newMileage: newMileage,
+              distanceDelta: delta,
+              recordedAt: now,
+              source: "line_chat_import",
+              reporterName: r.extractedDriverName || v.driverName || "นำเข้าจากกลุ่มแชท LINE",
+              rawMessage: r.rawMessage,
+              notes: r.warningNote || `นำเข้าจากกลุ่ม LINE (อัปเดตครั้งที่ ${newCount})`,
+              isFlagged: Boolean(r.warningNote)
+            };
+
+            inMemoryDB.mileageLogs = [newLog, ...(inMemoryDB.mileageLogs || [])];
+            updatedLogs.push(newLog);
+            appliedCount++;
+          }
+        }
+
+        if (appliedCount > 0) {
+          inMemoryDB.version += 1;
+          inMemoryDB.lastUpdated = now;
+          saveServerDB(inMemoryDB);
+
+          const act = addActivity({
+            timestamp: now,
+            userName: updatedBy?.name || "ฝ่ายจัดการกองรถ",
+            userRole: "ผู้ดูแลระบบขนส่ง",
+            userColor: "#06C755",
+            actionType: "VEHICLE_UPDATED",
+            title: `📲 นำเข้าเลขไมล์จาก LINE สำเร็จ ${appliedCount} คัน`,
+            description: `อัปเดตเลขไมล์รถจากแชทกลุ่ม LINE จำนวน ${appliedCount} รายการ`
+          });
+
+          broadcastToAll({
+            type: "full_state_sync",
+            version: inMemoryDB.version,
+            lastUpdated: inMemoryDB.lastUpdated,
+            data: inMemoryDB,
+            activity: act
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        results: parsedResults,
+        applied: apply,
+        appliedCount,
+        updatedLogs
+      });
+    } catch (err: any) {
+      console.error("[LINE Batch Import Error]:", err);
+      res.status(500).json({ success: false, error: err?.message || "Batch import error" });
+    }
+  });
+
+  // 4. Gemini AI Odometer Image OCR (ดึงเลขไมล์จากรูปถ่ายเรือนไมล์ใน LINE)
+  app.post("/api/line/ocr-odometer", async (req, res) => {
+    try {
+      const { imageBase64, apply = false, updatedBy } = req.body;
+      if (!imageBase64) {
+        return res.status(400).json({ success: false, error: "กรุณาส่งรูปภาพหน้าปัดเรือนไมล์" });
+      }
+
+      const ai = getGeminiAI();
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+
+      const prompt = `คุณคือผู้เชี่ยวชาญด้านระบบวิเคราะห์ภาพถ่ายหน้าปัดรถบรรทุก (Truck Odometer OCR)
+โปรดดูภาพถ่ายหน้าปัดไมล์รถนี้ แล้วสกัดข้อมูลออกมาเป็น JSON เท่านั้น:
+{
+  "odometerReading": 85400 (ตัวเลขไมล์จำนวนเต็ม เช่น 142500, หากมองไม่เห็นให้ใส่ null),
+  "licensePlate": "ทะเบียนรถถ้าเห็นในภาพ หรือป้ายภาษี/หน้ารถ ถ้าไม่เห็นให้ใส่ null",
+  "dashboardType": "digital หรือ analog",
+  "confidence": 0.95 (ความมั่นใจ 0-1),
+  "extractedText": "ตัวเลขหรือข้อความที่อ่านได้ทั้งหมดบนหน้าปัด"
+}`;
+
+      const aiResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Data
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const responseText = aiResponse.text || "{}";
+      const ocrResult = JSON.parse(responseText);
+
+      // Attempt matching with vehicles
+      let matchedVehicle: any = null;
+      if (ocrResult.licensePlate) {
+        const norm = ocrResult.licensePlate.replace(/[^0-9a-zA-Zก-ฮ]/g, "").toLowerCase();
+        matchedVehicle = inMemoryDB.vehicles.find(v => {
+          const vNorm = v.licensePlate.replace(/[^0-9a-zA-Zก-ฮ]/g, "").toLowerCase();
+          return vNorm.includes(norm) || norm.includes(vNorm);
+        }) || null;
+      }
+
+      res.json({
+        success: true,
+        ocr: ocrResult,
+        matchedVehicle
+      });
+    } catch (err: any) {
+      console.error("[LINE OCR Error]:", err);
+      res.status(500).json({ success: false, error: err?.message || "OCR failed" });
+    }
+  });
+
+  // 5. GET Mileage Logs
+  app.get("/api/fleet/mileage-logs", (req, res) => {
+    const { vehicleId } = req.query;
+    let logs = inMemoryDB.mileageLogs || [];
+    if (vehicleId) {
+      logs = logs.filter(l => l.vehicleId === vehicleId);
+    }
+    res.json({
+      success: true,
+      logs,
+      totalCount: logs.length
     });
   });
 
@@ -703,6 +1093,9 @@ ${JSON.stringify(highCostTickets || [], null, 2)}
             changed = true;
           } else if (entity === "dailyInspections" && Array.isArray(data)) {
             inMemoryDB.dailyInspections = data;
+            changed = true;
+          } else if (entity === "safetyHandovers" && Array.isArray(data)) {
+            inMemoryDB.safetyHandovers = data;
             changed = true;
           } else if (entity === "directory" && data) {
             inMemoryDB.directory = data;

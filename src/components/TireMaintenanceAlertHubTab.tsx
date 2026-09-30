@@ -30,11 +30,13 @@ import {
   TirePositionMeasurement 
 } from "../types";
 import { VEHICLE_TYPE_LABELS } from "../data/categories";
+import { TireWeeklyReplacementPlanView } from "./TireWeeklyReplacementPlanView";
 
 interface TireMaintenanceAlertHubTabProps {
   alerts: TireMaintenanceAlert[];
   settings: TireAlertSetting;
   vehicles: VehicleRecord[];
+  initialHubView?: "weekly_plan" | "individual_alerts";
   onOpenSettings: () => void;
   onOpenDispatch: () => void;
   onSelectVehicleForDiagram: (vehicleId: string) => void;
@@ -47,6 +49,7 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
   alerts,
   settings,
   vehicles,
+  initialHubView = "weekly_plan",
   onOpenSettings,
   onOpenDispatch,
   onSelectVehicleForDiagram,
@@ -54,6 +57,7 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
   onReplaceTire,
   onRequestRepairForVehicle
 }) => {
+  const [activeHubView, setActiveHubView] = useState<"weekly_plan" | "individual_alerts">(initialHubView);
   const [searchQuery, setSearchQuery] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState<"all" | "critical" | "warning">("all");
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState<string>("all");
@@ -149,8 +153,73 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Overview & Alert Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 0. Hub Sub-view Switcher: Weekly Replacement Plan vs Individual Tire Alerts */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveHubView("weekly_plan")}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+              activeHubView === "weekly_plan"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-400/40"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>📅 แผนการเปลี่ยนยางรายสัปดาห์ (Weekly Plan)</span>
+            <span
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${
+                activeHubView === "weekly_plan"
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {affectedVehiclesCount} คัน
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveHubView("individual_alerts")}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+              activeHubView === "individual_alerts"
+                ? "bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-400/40"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            <span>🚨 รายการแจ้งเตือนรายเส้น (Individual Alerts)</span>
+            <span
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${
+                activeHubView === "individual_alerts"
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {alerts.length} ตำแหน่งล้อ
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 text-xs text-slate-500 font-medium">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span>จัดลำดับความเร่งด่วนตามเกณฑ์ความปลอดภัยมาตรฐาน ISO 39001</span>
+        </div>
+      </div>
+
+      {activeHubView === "weekly_plan" ? (
+        <TireWeeklyReplacementPlanView
+          alerts={alerts}
+          settings={settings}
+          vehicles={vehicles}
+          onSelectVehicleForDiagram={onSelectVehicleForDiagram}
+          onReplaceTire={onReplaceTire}
+          onRequestRepairForVehicle={onRequestRepairForVehicle}
+        />
+      ) : (
+        <>
+          {/* 1. Header Overview & Alert Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Critical Tires */}
         <div className="bg-rose-950/40 p-4 rounded-2xl border border-rose-800/50 shadow-md flex items-center justify-between">
           <div>
@@ -265,6 +334,16 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
               <span>ส่งออก Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveHubView("weekly_plan")}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+              title="สลับไปดูแผนการเปลี่ยนยางรายสัปดาห์ (คันไหน ของสัปดาห์ไหน)"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>ดูแผนรายสัปดาห์</span>
             </button>
 
             {/* View Mode Switcher */}
@@ -667,6 +746,8 @@ export const TireMaintenanceAlertHubTab: React.FC<TireMaintenanceAlertHubTabProp
             </table>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

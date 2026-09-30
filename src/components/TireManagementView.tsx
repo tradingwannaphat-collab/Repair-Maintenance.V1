@@ -747,7 +747,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
             }`}
           >
             <ShieldAlert className={`w-4 h-4 ${criticalAlertsCount > 0 ? "text-rose-400 animate-pulse" : "text-amber-400"}`} />
-            <span>3. 🚨 ศูนย์แจ้งเตือนเปลี่ยนยาง ({fleetAlerts.length})</span>
+            <span>3. 🚨 ศูนย์แจ้งเตือน & แผนเปลี่ยนยางรายสัปดาห์ ({fleetAlerts.length})</span>
             {criticalAlertsCount > 0 && (
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping absolute -top-1 -right-1" />
             )}
@@ -786,6 +786,7 @@ export const TireManagementView: React.FC<TireManagementViewProps> = ({
         onOpenSettings={() => setIsAlertSettingsModalOpen(true)}
         onOpenDispatch={() => setIsAlertDispatchModalOpen(true)}
         onOpenAlertHub={() => setActiveSubTab("alerts_hub")}
+        onOpenWeeklyPlan={() => setActiveSubTab("alerts_hub")}
         onSelectVehicleId={(vId) => {
           setSelectedVehicleId(vId);
           setActiveSubTab("chassis_inspection");

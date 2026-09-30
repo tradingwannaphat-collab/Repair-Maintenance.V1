@@ -6,7 +6,9 @@ import {
   GoodsRequisitionRecord, 
   PMMonthlyScheduleItem, 
   DailyVehicleInspectionRecord,
-  ServiceDirectoryState 
+  VehicleSafetyHandoverRecord,
+  ServiceDirectoryState,
+  MileageLogEntry 
 } from "../types";
 
 export interface SyncPayload {
@@ -17,7 +19,9 @@ export interface SyncPayload {
   requisitions?: GoodsRequisitionRecord[];
   pmSchedules?: PMMonthlyScheduleItem[];
   dailyInspections?: DailyVehicleInspectionRecord[];
+  safetyHandovers?: VehicleSafetyHandoverRecord[];
   directory?: ServiceDirectoryState;
+  mileageLogs?: MileageLogEntry[];
   timestamp?: string;
   sourceClient?: string;
 }
@@ -32,7 +36,9 @@ export interface ServerStateResponse {
     requisitions: GoodsRequisitionRecord[];
     pmSchedules: PMMonthlyScheduleItem[];
     dailyInspections: DailyVehicleInspectionRecord[];
+    safetyHandovers?: VehicleSafetyHandoverRecord[];
     directory?: ServiceDirectoryState;
+    mileageLogs?: MileageLogEntry[];
     lastUpdated: string;
     version: number;
   };
@@ -139,4 +145,74 @@ export async function resetServerFleetState(): Promise<ServerStateResponse | nul
 
 export function getLastKnownServerUpdate(): string | null {
   return lastKnownServerUpdate;
+}
+
+/**
+ * Send a simulated or manual LINE message to the backend LINE parser
+ */
+export async function simulateLineMileageMessage(
+  message: string,
+  apply: boolean = true
+): Promise<{
+  success: boolean;
+  result?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch("/api/line/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, apply, sourceClient: CLIENT_ID })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to call LINE simulate API" };
+  }
+}
+
+/**
+ * Batch import multi-line messages copied from a LINE group chat
+ */
+export async function batchImportLineMileage(
+  batchText: string,
+  apply: boolean = true
+): Promise<{
+  success: boolean;
+  results?: any[];
+  appliedCount?: number;
+  error?: string;
+}> {
+  try {
+    const res = await fetch("/api/line/batch-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batchText, apply, sourceClient: CLIENT_ID })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to call LINE batch import API" };
+  }
+}
+
+/**
+ * Scan an odometer photo using server-side Gemini OCR
+ */
+export async function ocrLineOdometerPhoto(
+  imageBase64: string,
+  apply: boolean = false
+): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch("/api/line/ocr-odometer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64, apply, sourceClient: CLIENT_ID })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to perform OCR" };
+  }
 }
