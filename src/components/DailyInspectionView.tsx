@@ -31,7 +31,8 @@ import {
   Flame, 
   CheckSquare,
   HelpCircle,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronDown
 } from "lucide-react";
 import { 
   VehicleRecord, 
@@ -48,12 +49,14 @@ import {
 } from "../data/dailyInspectionData";
 import { DailyInspectionModal } from "./DailyInspectionModal";
 import { DailyInspectionPrintModal } from "./DailyInspectionPrintModal";
+import { SingleInspectionPdfModal } from "./SingleInspectionPdfModal";
 import { exportDailyInspectionMatrixToExcel, exportDailyInspectionLogsToExcel } from "../utils/excelImportExport";
 
 interface DailyInspectionViewProps {
   vehicles: VehicleRecord[];
   tickets: RepairTicket[];
   dailyInspections: DailyVehicleInspectionRecord[];
+  currentBrand?: "tnb" | "koch" | "all";
   onAddDailyInspection: (record: DailyVehicleInspectionRecord, autoCreateTicket?: boolean) => void;
   onUpdateDailyInspection: (record: DailyVehicleInspectionRecord) => void;
   onDeleteDailyInspection: (id: string) => void;
@@ -70,6 +73,7 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
   vehicles,
   tickets,
   dailyInspections,
+  currentBrand = "tnb",
   onAddDailyInspection,
   onUpdateDailyInspection,
   onDeleteDailyInspection,
@@ -105,6 +109,9 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printModalFormType, setPrintModalFormType] = useState<"filled" | "blank">("filled");
+  const [singleInspectionPdfRecord, setSingleInspectionPdfRecord] = useState<DailyVehicleInspectionRecord | null>(null);
+  const [isPdfDropdownOpen, setIsPdfDropdownOpen] = useState<boolean>(false);
   const [editingRecord, setEditingRecord] = useState<DailyVehicleInspectionRecord | null>(null);
   const [viewingRecordDetail, setViewingRecordDetail] = useState<DailyVehicleInspectionRecord | null>(null);
 
@@ -374,25 +381,46 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
             <button
               onClick={() => handleOpenNewModal()}
               id="btn-new-daily-inspection"
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-blue-900/50 flex items-center space-x-2 transition-all transform active:scale-95"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-blue-900/50 flex items-center space-x-2 transition-all transform active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ บันทึกตรวจสภาพรถวันนี้</span>
             </button>
 
+            {/* Direct PDF: Blank Form */}
             <button
-              onClick={() => setIsPrintModalOpen(true)}
-              id="btn-open-print-iso-modal"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors"
+              type="button"
+              onClick={() => {
+                setPrintModalFormType("blank");
+                setIsPrintModalOpen(true);
+              }}
+              id="btn-download-blank-pdf"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-md shadow-emerald-950/40 flex items-center space-x-1.5 transition-all transform active:scale-95 cursor-pointer"
+              title="เปิดดาวน์โหลดแบบฟอร์มเปล่า 31 วัน (ISO SHE-FRM-007) สำหรับพิมพ์แจกคนขับ"
             >
-              <Printer className="w-4 h-4 text-blue-400" />
-              <span>พิมพ์แบบฟอร์ม 31 วัน (ISO)</span>
+              <FileText className="w-4 h-4 text-emerald-100" />
+              <span>📄 โหลดแบบฟอร์มเปล่า PDF</span>
+            </button>
+
+            {/* Direct PDF: 31-Day Matrix with Records */}
+            <button
+              type="button"
+              onClick={() => {
+                setPrintModalFormType("filled");
+                setIsPrintModalOpen(true);
+              }}
+              id="btn-download-monthly-pdf"
+              className="bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-md shadow-blue-950/40 flex items-center space-x-1.5 transition-all transform active:scale-95 cursor-pointer"
+              title="เปิดรายงานผลตรวจสภาพ 31 วัน พร้อมดาวน์โหลด PDF และพิมพ์ (ISO 39001)"
+            >
+              <Download className="w-4 h-4 text-blue-100" />
+              <span>📊 สรุปตรวจ 31 วัน (PDF)</span>
             </button>
 
             <button
               onClick={handleExportExcel}
               id="btn-export-daily-excel"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="ส่งออกตารางเมทริกซ์ 31 วัน เป็นไฟล์ Excel (.xlsx)"
             >
               <Download className="w-4 h-4 text-emerald-400" />
@@ -402,7 +430,7 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
             <button
               onClick={handleGenerateSampleFleetData}
               id="btn-gen-sample-inspections"
-              className="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-medium px-3 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors"
+              className="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-medium px-3 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="สุ่มข้อมูลการตรวจสภาพรถจำลอง 31 วัน เต็มเดือน"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -619,15 +647,46 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
                 </button>
               </div>
 
-              {/* Print Button */}
-              <button
-                type="button"
-                onClick={() => setIsPrintModalOpen(true)}
-                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>พิมพ์ฟอร์ม A4</span>
-              </button>
+              {/* PDF and Print Buttons */}
+              <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintModalFormType("blank");
+                    setIsPrintModalOpen(true);
+                  }}
+                  className="bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
+                  title="ดาวน์โหลดแบบฟอร์มเปล่า 31 วัน (Blank Template) ไปพิมพ์"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>ฟอร์มเปล่า PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintModalFormType("filled");
+                    setIsPrintModalOpen(true);
+                  }}
+                  className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
+                  title="ดาวน์โหลดตารางตรวจสภาพเดือนนี้เป็นไฟล์ PDF (A4 แนวนอน)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>โหลด PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintModalFormType("filled");
+                    setIsPrintModalOpen(true);
+                  }}
+                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>พิมพ์ฟอร์ม A4</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1335,15 +1394,22 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
                           <td className="p-3 text-right">
                             <div className="flex items-center justify-end space-x-1.5">
                               <button
+                                onClick={() => setSingleInspectionPdfRecord(rec)}
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg transition-colors cursor-pointer"
+                                title="ดาวน์โหลด / พิมพ์รายงานผลตรวจวันนี้เป็น PDF"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => setViewingRecordDetail(rec)}
-                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg transition-colors"
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg transition-colors cursor-pointer"
                                 title="ดูรายละเอียดผลตรวจ"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleOpenEdit(rec)}
-                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg transition-colors"
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg transition-colors cursor-pointer"
                                 title="แก้ไขผลตรวจ"
                               >
                                 <Edit className="w-3.5 h-3.5" />
@@ -1354,7 +1420,7 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
                                     onDeleteDailyInspection(rec.id);
                                   }
                                 }}
-                                className="p-1.5 bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                                className="p-1.5 bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
                                 title="ลบบันทึก"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1862,21 +1928,37 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
             <div className="bg-slate-800 px-5 py-3 border-t border-slate-700 flex items-center justify-between">
               <button
                 onClick={() => setViewingRecordDetail(null)}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold cursor-pointer"
               >
                 ปิด
               </button>
-              <button
-                onClick={() => {
-                  const rec = viewingRecordDetail;
-                  setViewingRecordDetail(null);
-                  handleOpenEdit(rec);
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                <span>แก้ไขข้อมูล</span>
-              </button>
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rec = viewingRecordDetail;
+                    setSingleInspectionPdfRecord(rec);
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md cursor-pointer transition-all"
+                  title="ดาวน์โหลดหรือพิมพ์ผลตรวจวันนี้เป็นเอกสาร PDF A4"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>ดาวน์โหลด PDF</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const rec = viewingRecordDetail;
+                    setViewingRecordDetail(null);
+                    handleOpenEdit(rec);
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>แก้ไขข้อมูล</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1910,16 +1992,31 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* ISO 31-DAY MATRIX PRINT MODAL */}
+      {/* ISO 31-DAY MATRIX PRINT & PDF MODAL */}
       {/* ========================================================================= */}
-      {isPrintModalOpen && currentVehicle && (
+      {isPrintModalOpen && (
         <DailyInspectionPrintModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
-          vehicle={currentVehicle}
+          vehicle={currentVehicle || vehicles[0]}
           records={dailyInspections}
           month={selectedMonth}
           year={selectedYear}
+          currentBrand={currentBrand}
+          initialFormType={printModalFormType}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* SINGLE DAY INSPECTION PDF EXPORT MODAL */}
+      {/* ========================================================================= */}
+      {singleInspectionPdfRecord && (
+        <SingleInspectionPdfModal
+          isOpen={Boolean(singleInspectionPdfRecord)}
+          onClose={() => setSingleInspectionPdfRecord(null)}
+          record={singleInspectionPdfRecord}
+          vehicle={vehicles.find(v => v.id === singleInspectionPdfRecord.vehicleId || v.licensePlate === singleInspectionPdfRecord.licensePlate) || currentVehicle}
+          currentBrand={currentBrand}
         />
       )}
 

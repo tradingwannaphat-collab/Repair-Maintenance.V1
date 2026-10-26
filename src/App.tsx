@@ -1611,6 +1611,7 @@ export default function App() {
             vehicles={displayedVehicles}
             tickets={displayedTickets}
             dailyInspections={displayedDailyInspections}
+            currentBrand={currentBrand}
             onAddDailyInspection={handleAddDailyInspection}
             onUpdateDailyInspection={handleUpdateDailyInspection}
             onDeleteDailyInspection={handleDeleteDailyInspection}
