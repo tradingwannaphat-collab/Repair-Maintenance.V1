@@ -76,7 +76,9 @@ export const SingleInspectionPdfModal: React.FC<SingleInspectionPdfModalProps> =
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
       console.error("PDF generation failed:", err);
-      alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF กรุณาลองใหม่อีกครั้ง");
+      setTimeout(() => {
+        window.print();
+      }, 300);
     } finally {
       setIsDownloading(false);
     }

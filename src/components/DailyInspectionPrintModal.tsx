@@ -56,6 +56,7 @@ export const DailyInspectionPrintModal: React.FC<DailyInspectionPrintModalProps>
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadStatusText, setDownloadStatusText] = useState<string>("");
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -133,12 +134,16 @@ export const DailyInspectionPrintModal: React.FC<DailyInspectionPrintModalProps>
 
       setPdfBlobUrl(generatedBlobUrl);
       setDownloadSuccess(true);
+      setDownloadError(null);
       setTimeout(() => {
         setDownloadSuccess(false);
       }, 4000);
     } catch (err) {
       console.error("PDF Download error:", err);
-      alert("ไม่สามารถดาวน์โหลดไฟล์ PDF ได้ กรุณาลองใหม่อีกครั้ง หรือใช้ปุ่ม 'พิมพ์เอกสาร'");
+      setDownloadError("กำลังเปิดหน้าต่างพิมพ์ เพื่อให้คุณสามารถเลือก 'บันทึกเป็น PDF (Save as PDF)' หรือพิมพ์ออกเครื่องพิมพ์ได้ทันที");
+      setTimeout(() => {
+        window.print();
+      }, 400);
     } finally {
       setIsDownloading(false);
     }
@@ -306,6 +311,23 @@ export const DailyInspectionPrintModal: React.FC<DailyInspectionPrintModalProps>
               <span>{downloadStatusText || "กำลังเรนเดอร์เอกสาร PDF คุณภาพสูง..."}</span>
             </span>
             <span className="font-mono font-bold text-blue-400">{downloadProgress}%</span>
+          </div>
+        )}
+
+        {/* Error notification banner if fallback triggered */}
+        {downloadError && (
+          <div className="bg-amber-950/90 border-b border-amber-500/50 px-4 py-2 text-xs text-amber-200 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="font-bold">คำแนะนำ:</span>
+              <span>{downloadError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] ml-2 shrink-0 cursor-pointer"
+            >
+              เปิดหน้าต่างพิมพ์ (Save as PDF)
+            </button>
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
+import { toPng } from "html-to-image";
 
 export interface PdfExportOptions {
   orientation?: "portrait" | "landscape";
@@ -10,7 +11,9 @@ export interface PdfExportOptions {
 }
 
 /**
- * Creates a jsPDF document from a DOM element using high-resolution html2canvas.
+ * Creates a jsPDF document from a DOM element.
+ * Uses html2canvas-pro (with full Tailwind v4 oklch support)
+ * with an automatic fallback to html-to-image (SVG foreignObject).
  */
 export async function createPdfFromElement(
   element: HTMLElement,
@@ -26,30 +29,69 @@ export async function createPdfFromElement(
 
   if (onProgress) onProgress(15, "กำลังจัดเตรียมโครงร่างเอกสาร A4...");
 
-  // Render DOM to high-DPI canvas
-  const canvas = await html2canvas(element, {
-    scale,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    backgroundColor: "#ffffff",
-    onclone: (clonedDoc, clonedElement) => {
-      clonedElement.style.backgroundColor = "#ffffff";
-      clonedElement.style.color = "#0f172a";
-      clonedElement.style.boxSizing = "border-box";
-      clonedElement.style.margin = "0";
-      // Ensure target element is fixed width for ideal A4 proportions
-      if (orientation === "landscape") {
-        clonedElement.style.width = "1080px";
-      } else {
-        clonedElement.style.width = "780px";
+  let imgData: string | null = null;
+  let imgWidth = 0;
+  let imgHeight = 0;
+
+  // Attempt 1: html2canvas-pro (designed for modern CSS & oklch)
+  try {
+    const canvas = await html2canvas(element, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+      windowWidth: orientation === "landscape" ? 1400 : 1000,
+      onclone: (clonedDoc, clonedElement) => {
+        clonedElement.style.backgroundColor = "#ffffff";
+        clonedElement.style.color = "#0f172a";
+        clonedElement.style.boxSizing = "border-box";
+        clonedElement.style.margin = "0";
+        if (orientation === "landscape") {
+          clonedElement.style.width = "1080px";
+        } else {
+          clonedElement.style.width = "780px";
+        }
       }
+    });
+
+    imgWidth = canvas.width;
+    imgHeight = canvas.height;
+    imgData = canvas.toDataURL("image/png", 1.0);
+  } catch (canvasErr) {
+    console.warn("html2canvas-pro failed, falling back to html-to-image:", canvasErr);
+    if (onProgress) onProgress(35, "กำลังใช้เอ็นจินสำรอง html-to-image...");
+
+    // Attempt 2: html-to-image fallback
+    try {
+      imgData = await toPng(element, {
+        quality: 0.98,
+        pixelRatio: scale,
+        backgroundColor: "#ffffff",
+        style: {
+          backgroundColor: "#ffffff",
+          color: "#0f172a",
+          margin: "0",
+          width: orientation === "landscape" ? "1080px" : "780px"
+        }
+      });
+
+      // Compute image dimensions from data URL
+      const tempImg = new Image();
+      await new Promise<void>((resolve, reject) => {
+        tempImg.onload = () => resolve();
+        tempImg.onerror = reject;
+        tempImg.src = imgData!;
+      });
+      imgWidth = tempImg.width;
+      imgHeight = tempImg.height;
+    } catch (fallbackErr) {
+      console.error("Both html2canvas-pro and html-to-image failed:", fallbackErr);
+      throw new Error("Unable to capture document canvas for PDF generation.");
     }
-  });
+  }
 
-  if (onProgress) onProgress(60, "กำลังแปลงข้อมูลเป็นรูปแบบ PDF...");
-
-  const imgData = canvas.toDataURL("image/png", 1.0);
+  if (onProgress) onProgress(65, "กำลังสร้างไฟล์ PDF และจัดหน้า...");
 
   // Initialize jsPDF with A4 dimension
   const pdf = new jsPDF({
@@ -65,9 +107,7 @@ export async function createPdfFromElement(
   const printableWidth = pageWidth - marginMm * 2;
   const printableHeight = pageHeight - marginMm * 2;
 
-  const imgWidth = canvas.width;
-  const imgHeight = canvas.height;
-  const imgAspect = imgWidth / imgHeight;
+  const imgAspect = imgWidth / (imgHeight || 1);
 
   let renderWidth = printableWidth;
   let renderHeight = renderWidth / imgAspect;
@@ -82,9 +122,9 @@ export async function createPdfFromElement(
   const posX = marginMm + (printableWidth - renderWidth) / 2;
   const posY = marginMm + (printableHeight - renderHeight) / 2;
 
-  pdf.addImage(imgData, "PNG", posX, posY, renderWidth, renderHeight, undefined, "FAST");
+  pdf.addImage(imgData!, "PNG", posX, posY, renderWidth, renderHeight, undefined, "FAST");
 
-  if (onProgress) onProgress(85, "กำลังสร้างไฟล์ Blob PDF...");
+  if (onProgress) onProgress(88, "กำลังสร้างไฟล์ Blob PDF...");
 
   const blob = pdf.output("blob");
   const blobUrl = URL.createObjectURL(blob);
