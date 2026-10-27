@@ -558,8 +558,8 @@ export const DailyInspectionPrintModal: React.FC<DailyInspectionPrintModalProps>
                       </td>
 
                       {/* Method */}
-                      <td className="border-r border-slate-900 p-1 text-center text-[9px] text-slate-600">
-                        {tpl.method.split(" ")[0]}
+                      <td className="border-r border-slate-900 p-1 text-left text-[9px] text-slate-700 leading-tight">
+                        {tpl.method}
                       </td>
 
                       {/* Frequency */}

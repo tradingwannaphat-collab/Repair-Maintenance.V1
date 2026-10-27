@@ -16,6 +16,7 @@ import {
   Gauge, 
   FileText, 
   Info, 
+  BookOpen,
   Eye, 
   Edit, 
   Trash2, 
@@ -50,6 +51,7 @@ import {
 import { DailyInspectionModal } from "./DailyInspectionModal";
 import { DailyInspectionPrintModal } from "./DailyInspectionPrintModal";
 import { SingleInspectionPdfModal } from "./SingleInspectionPdfModal";
+import { DailyInspectionGuideModal } from "./DailyInspectionGuideModal";
 import { exportDailyInspectionMatrixToExcel, exportDailyInspectionLogsToExcel } from "../utils/excelImportExport";
 
 interface DailyInspectionViewProps {
@@ -114,6 +116,7 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
   const [isPdfDropdownOpen, setIsPdfDropdownOpen] = useState<boolean>(false);
   const [editingRecord, setEditingRecord] = useState<DailyVehicleInspectionRecord | null>(null);
   const [viewingRecordDetail, setViewingRecordDetail] = useState<DailyVehicleInspectionRecord | null>(null);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
 
   // Active Vehicle Object
   const currentVehicle = useMemo(() => {
@@ -417,6 +420,18 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
               <span>📊 สรุปตรวจ 31 วัน (PDF)</span>
             </button>
 
+            {/* Guide Button: How to inspect 21 items */}
+            <button
+              type="button"
+              onClick={() => setIsGuideModalOpen(true)}
+              id="btn-open-inspection-guide"
+              className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-md shadow-purple-950/40 flex items-center space-x-1.5 transition-all transform active:scale-95 cursor-pointer"
+              title="เปิดคู่มือวิธีตรวจสอบสภาพรถ 21 รายการอย่างละเอียด พร้อมดาวน์โหลด PDF และพิมพ์ (ISO 39001)"
+            >
+              <BookOpen className="w-4 h-4 text-purple-200" />
+              <span>📖 คู่มือวิธีตรวจ 21 ข้อ (PDF)</span>
+            </button>
+
             <button
               onClick={handleExportExcel}
               id="btn-export-daily-excel"
@@ -649,6 +664,16 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
 
               {/* PDF and Print Buttons */}
               <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsGuideModalOpen(true)}
+                  className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
+                  title="ดูคู่มือวิธีตรวจสอบสภาพรถ 21 รายการ พร้อมดาวน์โหลด PDF และพิมพ์"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>คู่มือวิธีตรวจ 21 ข้อ (PDF)</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1177,8 +1202,8 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
                           </td>
 
                           {/* Method Column */}
-                          <td className="p-2 border-r border-slate-800 text-center text-[10px] text-slate-400 font-mono">
-                            {tpl.method.split(" ")[0]}
+                          <td className="p-2 border-r border-slate-800 text-left text-[11px] text-slate-300">
+                            {tpl.method}
                           </td>
 
                           {/* Frequency Column */}
@@ -2017,6 +2042,17 @@ export const DailyInspectionView: React.FC<DailyInspectionViewProps> = ({
           record={singleInspectionPdfRecord}
           vehicle={vehicles.find(v => v.id === singleInspectionPdfRecord.vehicleId || v.licensePlate === singleInspectionPdfRecord.licensePlate) || currentVehicle}
           currentBrand={currentBrand}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* 21 ITEMS INSPECTION GUIDE & PROCEDURE MODAL */}
+      {/* ========================================================================= */}
+      {isGuideModalOpen && (
+        <DailyInspectionGuideModal
+          isOpen={isGuideModalOpen}
+          onClose={() => setIsGuideModalOpen(false)}
+          brand={currentBrand}
         />
       )}
 
